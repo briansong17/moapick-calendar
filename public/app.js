@@ -1,5 +1,5 @@
 const $ = id => document.getElementById(id);
-let current, previewUrls = [];
+let current, previewUrls = [], signedIn = null;
 const kinds = { event: '행사', registration: '신청·모집', reservation: '예약', other: '기타' };
 function el(tag, text, cls) { const e = document.createElement(tag); if (text !== undefined) e.textContent = text; if (cls) e.className = cls; return e; }
 async function api(path, data) {
@@ -95,7 +95,6 @@ $('save').onclick = async () => {
   } catch (e) { message(e.message); }
 };
 $('refresh').onclick = () => Promise.all([status(), history()]).catch(e => message(e.message));
-Promise.all([status(), history()]).catch(e => message(e.message));
 
 const connectionMessage = text => { $('connection-message').textContent = text; };
 async function connections() {
@@ -109,11 +108,13 @@ async function connections() {
   for (const a of s.collector.accounts) {
     const row = el('div', undefined, 'history-row'), info = el('div');
     info.append(el('strong', `@${a.username}`), el('small', `${a.enabled ? '자동 수집 켜짐' : '자동 수집 꺼짐'} · 마지막 확인 ${a.last_checked ? new Date(a.last_checked).toLocaleString('ko-KR') : '없음'}`));
+    info.append(el('small', a.phase==='initial' ? `초기 수집 중 · ${a.processed}개 처리` : a.phase==='paused' ? a.reason : a.phase==='refresh' ? '최신 게시물 확인 중' : (a.reason || '초기 수집 완료')));
     if (a.error) info.append(el('p', a.error, 'small'));
     const actions = el('div', undefined, 'actions'), toggle = el('button', a.enabled ? '자동 수집 끄기' : '자동 수집 켜기', 'secondary'), poll = el('button', '지금 수집', 'secondary');
     toggle.onclick = () => runConnection(async () => { await api('/api/meta/enable', { username: a.username, enabled: !a.enabled }); return '자동 수집 설정을 저장했습니다.'; });
     poll.onclick = () => runConnection(async () => { poll.disabled = true; connectionMessage('게시물을 조회하고 분석 중입니다. 잠시 기다려 주세요.'); await api('/api/meta/poll', { username: a.username }); await Promise.all([history(), status()]); return '수집이 끝났습니다. 처리 기록과 분석 결과를 확인하세요.'; });
-    actions.append(toggle, poll); row.append(info, actions); $('watch-list').append(row);
+    const remove=el('button','구독 취소','text-button'); remove.onclick=()=>runConnection(async()=>{await api('/api/meta/unsubscribe',{username:a.username});current=null;$('results').hidden=true;$('empty').hidden=false;await history();return '구독을 취소했습니다.';});
+    actions.append(toggle, poll, remove); row.append(info, actions); $('watch-list').append(row);
   }
   $('post-log').replaceChildren();
   const names = { pending: '분석 대기', running: '분석 중', complete: '분석 완료', failed: '분석 실패', skipped: '수동 확인 필요' };
@@ -141,7 +142,7 @@ $('meta-config').onclick = () => runConnection(async () => {
   try { await api('/api/meta/config', { ig_id: $('meta-id').value.trim(), version: $('meta-version').value.trim(), token: $('meta-token').value.trim() }); return '새 Meta 계정 조회에 성공하고 암호화 저장했습니다.'; }
   finally { $('meta-token').value = ''; }
 });
-$('watch-add').onclick = () => runConnection(async () => { await api('/api/meta/accounts', { username: $('watch-username').value }); $('watch-username').value = ''; return '계정 조회를 확인했습니다. 자동 수집을 켜거나 지금 수집을 선택하세요.'; });
+$('watch-add').onclick = () => runConnection(async () => { await api('/api/meta/accounts', { username: $('watch-username').value }); $('watch-username').value = ''; return '구독을 추가했습니다. 자동 수집이 시작되며 기존 계정은 수집 결과를 재사용합니다.'; });
 $('google-publish').onclick = async () => {
   $('google-publish').disabled = true;
   try {
@@ -150,4 +151,22 @@ $('google-publish').onclick = async () => {
   } catch (e) { message(e.message); }
   finally { $('google-publish').disabled = false; }
 };
-connections().catch(e => connectionMessage(e.message));
+loadSession().catch(e => { $('auth-status').textContent=e.message; });
+
+async function loadSession() {
+  const state=await api('/api/auth/me'); signedIn=state.user;
+  $('auth-form').hidden=!!signedIn; $('logout').hidden=!signedIn; $('member-content').hidden=!signedIn;
+  $('auth-title').textContent=signedIn?`${signedIn.login}님의 모아`:'로그인 · 회원가입';
+  $('auth-status').textContent=signedIn?'내 구독과 검토한 일정을 관리하세요.':state.setup?'첫 가입 계정은 이 PC의 관리자가 되어 기존 연결·기록을 이어받습니다. 아이디와 10자 이상의 비밀번호를 직접 정해 주세요.':'가입한 아이디로 로그인하거나 새 계정을 만들어 주세요.';
+  document.querySelectorAll('[data-admin]').forEach(e=>{e.hidden=!signedIn?.admin;});
+  if(signedIn) await Promise.all([status(),history(),connections()]);
+}
+async function authenticate(signup) {
+  const buttons=[...$('auth-form').querySelectorAll('button')];buttons.forEach(b=>b.disabled=true);
+  try {await api(signup?'/api/auth/register':'/api/auth/login',{login:$('login-id').value,password:$('login-password').value});$('login-password').value='';await loadSession();}
+  catch(e){$('auth-status').textContent=e.message;}
+  finally{buttons.forEach(b=>b.disabled=false);}
+}
+$('auth-form').onsubmit=e=>{e.preventDefault();authenticate(false);};
+$('signup').onclick=()=>{if($('auth-form').reportValidity())authenticate(true);};
+$('logout').onclick=async()=>{try{await api('/api/auth/logout',{});window.location.reload();}catch(e){$('auth-status').textContent=e.message;}};

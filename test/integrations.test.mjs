@@ -89,7 +89,7 @@ test('주기 수집: 중복 방지, 캡션 변경, 한도 대기, 영상 건너�
   try {
     await c.add('test'); await c.poll('test'); await c.poll('test');
     assert.equal(calls, 1); assert.equal(c.status().posts.find(p => p.id === '67890').status, 'skipped');
-    caption = '변경'; capped = true; await c.poll('test');
+    caption = '변경'; capped = true; await assert.rejects(c.poll('test'), e=>e.status===429);
     assert.equal(c.status().posts.find(p => p.id === '12345').attempts, 0);
     capped = false; await c.poll('test'); assert.equal(calls, 2);
     assert.equal(c.status().accounts[0].enabled, 0);

@@ -71,17 +71,19 @@ test('HTTP: 중복 분석 방지, 저장 확인, 한도, 정적파일 보호', a
   const server = makeServer({ store, apiKey: 'fake', limit: 1, analyze: async () => { calls++; return { result: result(), usage: {} }; } });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   const base = `http://127.0.0.1:${server.address().port}`;
-  const post = (path, data, headers = {}) => fetch(base + path, { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(data) });
+  let cookie='';
+  const post = (path, data, headers = {}) => fetch(base + path, { method: 'POST', headers: { 'Content-Type': 'application/json', Cookie:cookie, ...headers }, body: JSON.stringify(data) });
   try {
     assert.equal((await fetch(base + '/')).status, 200);
     assert.equal((await fetch(base + '/.env.local')).status, 404);
     assert.equal((await post('/api/analyze', input, { Origin: 'https://evil.test' })).status, 403);
+    const signup=await post('/api/auth/register',{login:'tester',password:'test-password-long'}); cookie=signup.headers.get('set-cookie').split(';')[0];
     const first = await (await post('/api/analyze', input)).json();
     assert.equal((await (await post('/api/analyze', input)).json()).cached, true); assert.equal(calls, 1);
     assert.equal((await post('/api/analyze', { ...input, caption: 'changed' })).status, 429);
     assert.equal((await post(`/api/analyses/${first.id}/review`, { events: result().events })).status, 400);
     assert.equal((await post(`/api/analyses/${first.id}/review`, { events: result().events, confirmed: true })).status, 200);
-    assert.match(await (await fetch(`${base}/api/analyses/${first.id}/calendar.ics`)).text(), /BEGIN:VCALENDAR/);
+    assert.match(await (await fetch(`${base}/api/analyses/${first.id}/calendar.ics`,{headers:{Cookie:cookie}})).text(), /BEGIN:VCALENDAR/);
     assert.equal(store.get(first.id).metadata.images, undefined);
   } finally { await new Promise(resolve => server.close(resolve)); store.db.close(); }
 });
