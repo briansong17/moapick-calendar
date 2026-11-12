@@ -14,6 +14,10 @@
           <details><summary>1. 새 OAuth 클라이언트 설정</summary><p class="small">Google Cloud의 웹 애플리케이션 클라이언트 JSON을 선택하세요. 파일은 이 PC에 암호화 저장됩니다.</p>
             <p class="small">승인된 리디렉션 URI: <code>http://127.0.0.1:3080/oauth/google/callback</code></p>
             <label>Google 클라이언트 JSON<input id="google-json" type="file" accept="application/json,.json"></label><button type="button" class="secondary" id="google-config">JSON 저장</button>
+            <p class="small">JSON 대신 Google에서 새로 생성한 클라이언트 ID와 보안 비밀번호를 직접 입력할 수도 있습니다. 채팅에 보내지 말고 아래에 입력하세요.</p>
+            <label>Google 클라이언트 ID<input id="google-client-id" autocomplete="off"></label>
+            <label>Google 클라이언트 보안 비밀번호<input id="google-client-secret" type="password" autocomplete="off"></label>
+            <button type="button" class="secondary" id="google-manual-config">입력한 인증 정보 저장</button>
           </details>
           <div class="actions"><button type="button" id="google-connect" class="secondary">2. Google 계정 연결</button><button type="button" id="google-calendar" class="secondary">3. 전용 캘린더 만들기</button></div>
           <p class="small">모아가 만든 보조 캘린더만 사용합니다. 일정은 검토·저장 후 직접 등록합니다.</p>

@@ -64,7 +64,10 @@ Google 직접 등록은 분석 ID에 연결된 고정 이벤트 ID로 중복을 
 ## Google 설정
 
 새 프로젝트: **Moa Instagram Calendar**, ID `astute-helper-514510-d7`.
-이 프로젝트는 생성 확인되었으나 Calendar API 활성화와 OAuth 설정은 사용자 승인 대기 중입니다.
+Calendar API 활성화, OAuth 동의 화면 및 웹 클라이언트 `Moa Local Web` 생성 완료.
+클라이언트 ID: `179396803727-ofdr1mn43hqmes6el2jjqfrr5ht5edbr.apps.googleusercontent.com`.
+인증 JSON 다운로드가 완료되지 않아 로컬 자격증명 저장과 실제 Google 승인은 아직 미완료입니다.
+Google 화면은 생성된 보안 비밀번호를 재열람할 수 없다고 안내하므로 사용자가 새 보안 비밀번호를 추가하고 안전하게 저장하는 단계가 필요합니다.
 
 1. 새 프로젝트에서 Google Calendar API 활성화(약관 동의 필요).
 2. Google Auth Platform에서 앱 표시 이름/지원 이메일/개발자 연락처/외부 테스트 사용자를 설정.
@@ -82,6 +85,9 @@ OAuth state + 브라우저 HttpOnly 쿠키 + PKCE를 검증합니다. 계정 연
 ## Meta 설정 및 수집 범위
 
 기존 Reelbox 계정·앱·토큰을 사용하지 않습니다. 새 프로젝트용 Facebook 계정으로 개발자 화면에 로그인합니다.
+새 Meta 앱 `Moa Calendar` 생성 완료. 앱 ID: `2281199932611721`.
+Instagram 이용 사례의 Facebook Login API 설정 화면까지 확인했습니다.
+본인 Instagram 프로페셔널 계정 및 Facebook 페이지 연결·토큰 발급·실제 조회 검증은 미완료입니다.
 Facebook Login 방식의 새 Meta 앱, 본인 Instagram 프로페셔널 계정과 연결된 Facebook 페이지를 준비합니다.
 Business Discovery의 권한과 현재 Graph API 버전은 새 앱 화면/공식 문서에서 확인해야 합니다.
 초기 설정에서 `instagram_basic`, `instagram_manage_insights`, `pages_read_engagement`,

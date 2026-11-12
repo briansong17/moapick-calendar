@@ -130,6 +130,12 @@ $('google-config').onclick = () => runConnection(async () => {
   await api('/api/google/config', config); $('google-json').value = ''; return '클라이언트를 암호화 저장했습니다.';
 });
 $('google-connect').onclick = () => runConnection(async () => { const { url } = await api('/api/google/connect', {}); window.location.assign(url); return 'Google 로그인 화면으로 이동합니다.'; });
+$('google-manual-config').onclick = () => runConnection(async () => {
+  try {
+    await api('/api/google/config', { web: { client_id: $('google-client-id').value.trim(), client_secret: $('google-client-secret').value.trim(), redirect_uris: ['http://127.0.0.1:3080/oauth/google/callback'] } });
+    return '클라이언트를 암호화 저장했습니다. Google 계정 연결을 진행하세요.';
+  } finally { $('google-client-secret').value = ''; }
+});
 $('google-calendar').onclick = () => runConnection(async () => { await api('/api/google/calendar', {}); return '모아 전용 캘린더를 만들었습니다.'; });
 $('meta-config').onclick = () => runConnection(async () => {
   try { await api('/api/meta/config', { ig_id: $('meta-id').value.trim(), version: $('meta-version').value.trim(), token: $('meta-token').value.trim() }); return '새 Meta 계정 조회에 성공하고 암호화 저장했습니다.'; }
