@@ -1,0 +1,7 @@
+.env*
+data
+.key-setup
+node_modules
+.git
+test
+*.log

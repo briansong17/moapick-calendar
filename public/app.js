@@ -101,9 +101,11 @@ async function connections() {
   const s = await api('/api/integrations');
   $('google-status').textContent = s.google.calendar ? `연결 완료 · ${s.google.calendar}` : s.google.connected ? 'Google 승인 완료 · 전용 캘린더 생성 필요' : s.google.configured ? '클라이언트 설정 완료 · 계정 연결 필요' : '새 Google OAuth 클라이언트 설정 필요';
   if (s.google.calendarPending) $('google-status').textContent += ' · 이전 캘린더 생성 결과 확인 필요';
+  if (s.google.reconnectRequired) $('google-status').textContent = 'Google 인증 만료·철회 · 아래 계정 연결 버튼으로 다시 승인하세요.';
   $('google-connect').disabled = !s.google.configured;
   $('google-calendar').disabled = !s.google.connected || !!s.google.calendar || s.google.calendarPending;
   $('meta-status').textContent = s.meta.configured ? `연결 설정됨 · @${s.meta.account} · ${s.meta.version}` : '새 Meta 앱·토큰 설정 필요';
+  if (s.meta.reconnectRequired) $('meta-status').textContent = 'Meta 인증 만료·철회 · 관리자에게 재연결을 요청하세요.';
   $('watch-list').replaceChildren();
   for (const a of s.collector.accounts) {
     const row = el('div', undefined, 'history-row'), info = el('div');
@@ -118,7 +120,7 @@ async function connections() {
   }
   $('post-log').replaceChildren();
   const names = { pending: '분석 대기', running: '분석 중', complete: '분석 완료', failed: '분석 실패', skipped: '수동 확인 필요' };
-  for (const p of s.collector.posts) $('post-log').append(el('p', `@${p.username} · ${p.id} · ${names[p.status]}${p.error ? ` · ${p.error}` : ''}`, 'small'));
+  for (const p of s.collector.posts) $('post-log').append(el('p', `@${p.username} · ${p.id} · ${names[p.status]}${p.status==='failed'?` · 시도 ${p.attempts}/3${p.attempts>=3?' (자동 재시도 종료)':''}`:''}${p.error ? ` · ${p.error}` : ''}`, 'small'));
 }
 async function runConnection(fn) {
   try { connectionMessage(await fn()); } catch (e) { connectionMessage(e.message); }

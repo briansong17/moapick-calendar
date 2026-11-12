@@ -1,0 +1,40 @@
+# 모아 배포 운영 기록
+
+2026-11-12 배포 주소: https://moa-calendar-eta.vercel.app
+
+## 검증된 사항
+
+- Vercel `brian-bc35/moa-calendar`, Supabase `uraavcbwbyabhxkbyilv`.
+- Google 전용 가입(이메일 비밀번호 가입/익명 로그인 비활성), 실제 로그인 성공.
+- 세션은 HttpOnly/Secure/SameSite=Lax 쿠키에 무작위 ID만 저장. Supabase 세션과 Google 연결 토큰은 서버 키로 AES-GCM 암호화.
+- 일반 데이터 조회에 회원 JWT와 RLS 적용. 서비스 키는 서버에만 저장. 다른 회원 데이터 접근 및 직접 쓰기 차단을 SQL 롤백 테스트로 검증.
+- Google 앱 전용 캘린더 권한으로 클라우드 전용 캘린더 생성 성공. 기존 로컬 캘린더 유지.
+- Meta 토큰 만료(190/463) 확인 후 같은 조회 권한으로 갱신, 본인 계정 조회 및 @ssu_aisw 구독 성공.
+- Vercel Schedules `instagram-collection`: 15분 간격, 비공개 `api/collect` 함수. 수동 실행으로 사진 15장 게시물 1건 분석·DB 저장·회원 화면 조회 성공.
+- 테스트 29개 통과, npm audit 취약점 0건. 비로그인 분석 API/cron 401, 환경파일 경로 404 확인.
+
+## 운영 방식
+
+예약 1회당 활성 구독 계정 중 대기 시간이 긴 계정의 게시물 1개를 처리한다. 최초 수집은 커서와 큐를 저장하며 과거 행사 경계까지 이어간다. 무료 플랜 실행 지연과 여러 계정 대기로 실제 계정별 처리 주기는 길어질 수 있다. 분석은 배포 전체 일일 20회 제한. 만료된 세션·OAuth 요청·한도·잠금을 예약 작업에서 정리한다.
+
+환경변수 변경 후 새 production 배포가 필요하다. `.env.cloud.local`, `.env.local`, `data/`, `.vercel/`은 Git 및 업로드 제외 대상이다. 전송용 임시 인증정보 JSON은 작업 후 삭제한다. 암호화 키 교체 시 기존 연결 정보를 복호화할 수 없으므로 백업·재연결 계획 없이 변경하지 않는다.
+
+검증 명령:
+```
+npm test
+npm audit --omit=dev
+npx vercel schedules list --scope brian-bc35
+npx vercel schedules invoke instagram-collection --scope brian-bc35
+npx vercel logs --query 'requestPath:/api/collect' --since 10m --scope brian-bc35
+```
+
+## 미완료 및 공개 운영 제한
+
+- Google OAuth 프로덕션 전환 및 Meta 앱 게시 완료. Google은 현재 범위에 데이터 접근 심사가 불필요하다고 표시한다. 브랜드 인증은 홈페이지 소유권·앱 이름 보완 후 재심사가 남았다. Meta 게시 자체가 추가 권한 심사 승인을 뜻하지 않는다.
+- Meta 장기 토큰은 2027-01-11 만료. 만료 전 재연결 운영 필요. 개인정보처리방침·이용 안내·데이터 삭제 페이지 게시 및 Google/Meta 링크 설정 완료. 운영자는 Moa Calendar 팀, 문의 songhaegeun280@gmail.com.
+- 명시적으로 승인된 로컬 이메일 회원만 이관: 구독 1개, 공유 분석 1건, 개인 검토 1건(일정 5개), 기존 캘린더 연결 기록 1건. qa-owner 개인 기록과 인증정보는 제외. 원래 캘린더와 이벤트 ID 유지. 원본 SQLite 및 이관 중복 정리 백업은 Git 제외 data/에 보관. 이관은 계정별 수집 잠금 안에서 수행한다.
+- 새 추출 일정은 `(검토 필요)` 제목으로 자동 동기화한다. 날짜 없는 후보는 대기하며, 시간이 불확실하면 날짜만 표시한다. 검토 저장 시 같은 이벤트 ID를 갱신해 표시를 제거한다. 검토에서 제외하면 해당 앱 일정만 삭제한다. 실패는 moa_sync_jobs에서 재시도하며 대체된 이관 분석은 재등록하지 않는다.
+- 서로 다른 Google 계정의 실제 격리 테스트, 클라우드 회원 탈퇴의 실제 종단 테스트는 남아 있다. 기존 회원을 임의 삭제하지 않는다.
+- 영상과 누락 이미지 게시물은 자동 분석하지 않는다. 원문 확인이 필요하다. 최초 수집의 실제 여러 페이지 종료 검증은 별도로 남아 있다.
+2026-11-13: 공개 표시 이름을 `모아픽 캘린더 · MoaPick Calendar`로 변경, 홈페이지·정책·Google OAuth 설정에 반영. Search Console HTML 태그 소유권 인증 성공. Google 브랜드 자동 재검사에서 앱 이름 지적은 해소됐고 홈페이지 소유권만 남음. Google 안내대로 소유권 인증 후 24시간 반영 대기 후 재검사 필요. 이름 변경 배포: dpl_GutM6hAJTSm74UWj7bTgLqNXmKHi. 운영자 명칭은 승인된 Moa Calendar 팀을 유지.
+2026-11-13: 기존 Vercel 사이트에 내 일정 관리 추가. 개별/선택/전체 삭제, 회원별 moa_event_deletions RLS 적용, 원본 index 기반 삭제 표시 유지. 자동 동기화에서 삭제 표시를 반영하며 Google 실패는 기존 sync job으로 재시도. 구독 해지 후에도 본인 exports가 있는 분석은 관리 목록에 포함. 원본 공유 분석은 유지. 실제 사용자 일정 삭제 없이 UI 선택/취소 및 모의 API/Google 테스트로 검증.

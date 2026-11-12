@@ -26,7 +26,7 @@ export function makeServer({ store, apiKey, model = 'gpt-5.4-mini', limit = 20, 
   let busy = false;
   async function analyzeInput(raw, user=null) {
     if (!apiKey) throw new AppError('서버에 OpenAI API 키가 설정되지 않았습니다.', 503);
-    const input = validateInput(raw), hash = inputHash(input, model + ':' + (user?.id ?? 'public-instagram')), cached = store.cached(hash);
+    const input = validateInput(raw, {maxImages:user ? 3 : 20}), hash = inputHash(input, model + ':' + (user?.id ?? 'public-instagram')), cached = store.cached(hash);
     if (cached) return { ...cached, cached: true };
     if (busy) throw new AppError('다른 이미지를 분석 중입니다. 완료 후 시도해 주세요.', 409);
     const { images, ...metadata } = input;

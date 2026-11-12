@@ -49,6 +49,7 @@ test('과거 종료 기준: 미래 혼합·날짜 불명·경고·신청만 있�
   assert.equal(pastBoundary(result([{...past,kind:'registration'}]),day),false);
   assert.equal(pastBoundary({...result([past]),warnings:['연도 불명']},day),false);
   assert.equal(pastBoundary(result([event(day)]),day),false);
+  assert.equal(pastBoundary(result([{...past,title:'2027년도 선거관리위원회 구성공고'}]),day),false);
 });
 
 test('신규 계정: 페이지 이동·회당 상한·재시작·일일 한도에서 이어가기, 과거 일정에서 종료',async()=>{
