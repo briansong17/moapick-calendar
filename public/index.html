@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="ko">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>모아 — 게시물 속 일정을 한곳에</title><link rel="stylesheet" href="/style.css"><script type="module" src="/app.js"></script></head>
+<body>
+  <header><a class="brand" href="/">모아<span>moa</span></a><span class="header-note">게시물 속 일정을 한곳에</span><span class="local">내 PC에서 실행 중</span></header>
+  <main>
+    <section class="intro"><p class="eyebrow">INSTAGRAM → MY CALENDAR</p><h1>발견한 순간을,<br>놓치지 않을 일정으로.</h1><p>행사 포스터와 게시물 이미지를 올려 주세요.<br>날짜와 장소를 정리하고, 확인한 일정을 보관할 수 있어요.</p></section>
+    <section class="steps" aria-label="진행 순서"><span><b>01</b> 이미지 올리기</span><span><b>02</b> 일정 확인하기</span><span><b>03</b> 저장하고 내보내기</span></section>
+    <div class="workspace">
+      <section class="panel input-panel"><div class="section-head"><div><p class="eyebrow">NEW POST</p><h2>어떤 게시물을 발견했나요?</h2></div><span class="tag">이미지 분석</span></div>
+        <form id="upload-form">
+          <label class="upload" for="images"><span class="upload-icon">＋</span><strong>게시물 이미지 선택</strong><span>PNG · JPG · WebP / 최대 3장, 한 장당 3MB</span><input id="images" type="file" accept="image/png,image/jpeg,image/webp" multiple required></label>
+          <div id="previews" class="previews"></div>
+          <label>게시물 캡션 <span class="optional">선택</span><textarea id="caption" rows="4" maxlength="12000" placeholder="사진에 없는 신청 링크나 설명을 함께 붙여 넣으세요."></textarea></label>
+          <div class="fields"><label>계정 아이디 <span class="optional">선택</span><input id="account" placeholder="예: seoul_festival" maxlength="30"></label><label>게시 날짜 <span class="optional">선택</span><input id="posted_at" type="date"></label></div>
+          <label>원본 게시물 주소 <span class="optional">선택</span><input id="source_url" type="url" maxlength="500" placeholder="https://www.instagram.com/p/..."></label>
+          <p class="privacy">분석을 누르면 이미지와 캡션이 OpenAI API로 전송됩니다. 이미지 원본은 이 앱의 서버에 보관하지 않습니다.</p>
+          <button id="analyze" class="primary" type="submit">일정 추출하기 <span>↗</span></button>
+          <p id="usage" class="small">연결 상태 확인 중…</p>
+        </form>
+      </section>
+      <section class="panel result-panel"><div class="section-head"><div><p class="eyebrow">REVIEW</p><h2>추출한 일정</h2></div><span id="result-badge" class="tag">확인 대기</span></div>
+        <p id="message" role="status" aria-live="polite"></p>
+        <div id="empty" class="empty"><div class="calendar-icon">▦</div><h3>다음에 갈 곳이 여기에</h3><p>이미지를 분석하면 일정 후보가 나타나요.<br>원문과 비교한 뒤 날짜와 장소를 확인해 주세요.</p><div class="empty-note">행사 기간과 신청 기간을 따로 정리해요.</div></div>
+        <div id="results" hidden><p id="summary"></p><div id="warnings" class="notice"></div><div id="events"></div>
+          <label class="confirm"><input type="checkbox" id="confirmed"> 원문과 비교하여 날짜·시간대·장소를 확인했습니다.</label>
+          <div class="actions"><button id="save" class="primary" type="button">확인한 일정 저장</button><a id="download" class="secondary" hidden>캘린더 파일 받기 ↓</a></div>
+          <p class="small">캘린더 파일(.ics)은 수동 가져오기용입니다. Google 캘린더 자동 연동은 아직 연결되지 않았습니다.</p>
+        </div>
+      </section>
+    </div>
+    <section class="panel history-panel"><div class="section-head"><div><p class="eyebrow">COLLECTION</p><h2>최근 분석 기록</h2></div><button class="text-button" id="refresh">새로고침 ↻</button></div><div id="history"><p class="small">아직 분석 기록이 없습니다.</p></div></section>
+    <footer><span>모아 · 이미지 일정 정리</span><span>현재 단계: 이미지 분석 및 수동 검토 · Instagram 자동 수집 미연결</span></footer>
+  </main>
+</body></html>
