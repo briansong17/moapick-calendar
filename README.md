@@ -4,7 +4,7 @@
 
 ## 실행
 
-Node.js 24 이상이 필요합니다. 추가 패키지 설치 없이 실행합니다.
+Node.js 24 이상이 필요합니다. 처음 받은 소스에서는 `npm ci`로 Google 공식 인증 라이브러리를 설치합니다.
 
 ```powershell
 cd 'D:\AI_SW_2026팀플\instagram-calendar'
@@ -30,11 +30,14 @@ npm start
 
 ## 구현 범위와 제한
 
-완료: 로컬 웹 화면, 이미지/캡션 분석, 구조화된 일정, 검토/수정, SQLite 기록, 캘린더 파일 수동 내보내기.
+구현: 로컬 웹 화면, 이미지/캡션 분석, 구조화된 일정, 검토/수정, SQLite 기록, 캘린더 파일 수동 내보내기,
+Google OAuth 연결·토큰 갱신·전용 캘린더 생성·검토한 일정 등록,
+Meta Business Discovery 조회·관찰 계정·60분 주기 수집·중복 분석 방지.
 
-미구현: Instagram API 수집, 계정 관찰, 영상 분석, 사용자 로그인, Google OAuth/API 직접 등록,
-예약 실행, 게시물 변경·취소 자동 반영, 외부 접속. `.ics` 반복 가져오기 시 캘린더 서비스에 따라 중복될 수 있습니다.
-향후 Google 직접 연동에서 게시물/일정 ID를 매핑해 중복과 사용자 수정 충돌을 처리해야 합니다.
+외부 연결 검증은 아직 미완료입니다. 새 Meta 계정 및 Google OAuth 자격증명·사용자 승인 후 실제 계정으로 검증해야 합니다.
+미구현: 영상 분석, 여러 사용자 로그인, 행사 취소/삭제 자동 반영, 등록된 일정 자동 수정, 외부 접속.
+`.ics` 반복 가져오기 시 캘린더 서비스에 따라 중복될 수 있습니다.
+Google 직접 등록은 분석 ID에 연결된 고정 이벤트 ID로 중복을 방지합니다. 등록 후 로컬 결과를 수정하면 덮어쓰기를 차단합니다.
 이 버전은 한 PC의 단일 사용자·단일 서버 프로세스용입니다. 외부 공개하지 마세요.
 
 ## 비용과 데이터
@@ -49,17 +52,68 @@ npm start
 - `.env*`, `data/`, `.key-setup/`는 Git 제외. `data/test-poster.png`는 개발용 합성 포스터입니다.
 - 백업할 때 서버를 종료한 뒤 `data` 폴더를 복사합니다. 키 파일은 별도로 안전하게 관리합니다.
 - 요청 중 서버를 재시작하면 해당 작업은 중단 상태가 됩니다. 재분석은 수동으로 실행합니다.
+- 자동 수집 작업은 재시작 시 대기 상태로 복원합니다. 계정별 켜짐/꺼짐과 다음 조회 시간도 DB에 보관합니다.
+- 연동 비밀정보는 `data/integrations.enc`에 AES-256-GCM으로 저장합니다. `data/integration.key`도 함께 백업해야 합니다.
+  같은 PC 계정이 두 파일을 모두 읽을 수 있으면 복호화할 수 있으므로 OS 계정과 백업의 접근 권한도 관리해야 합니다.
 
 ## 검증
 
 `npm test`: 모의 응답 및 HTTP 통합 테스트. 비용 발생 없음.
 `npm run smoke:live`: `data/test-poster.png`로 실제 유료 API 호출 1회. 명시적으로 실행할 때만 호출됩니다.
 
-## 다음 연결 단계
+## Google 설정
 
-1. 새 Meta 앱·프로페셔널 Instagram·Facebook 페이지 환경에서 대상 계정 및 이미지 조회를 검증합니다.
-2. 새 Google Cloud 프로젝트의 Calendar API/OAuth 동의 화면과 웹 클라이언트를 설정합니다.
-3. 토큰 암호화/갱신, 사용자별 데이터 분리, 주기 수집, 작업 복구 및 일정 ID 매핑을 추가합니다.
+새 프로젝트: **Moa Instagram Calendar**, ID `astute-helper-514510-d7`.
+이 프로젝트는 생성 확인되었으나 Calendar API 활성화와 OAuth 설정은 사용자 승인 대기 중입니다.
+
+1. 새 프로젝트에서 Google Calendar API 활성화(약관 동의 필요).
+2. Google Auth Platform에서 앱 표시 이름/지원 이메일/개발자 연락처/외부 테스트 사용자를 설정.
+3. 웹 애플리케이션 OAuth 클라이언트를 생성. 승인된 리디렉션 URI:
+   `http://127.0.0.1:3080/oauth/google/callback`
+4. 다운로드한 클라이언트 JSON을 로컬 웹 화면의 Google 설정에 업로드.
+5. `Google 계정 연결`에서 `calendar.app.created` 권한 승인 후 전용 캘린더 만들기.
+6. 일정 원문 확인 → 로컬 저장 → `Google 캘린더에 등록`.
+
+시간 일정은 Google에서 종료 시점을 요구하므로 종료 시간 입력이 필요합니다. 추측으로 채우지 않습니다.
+토큰 갱신은 공식 google-auth-library가 처리합니다. 권한 철회/테스트 자격증명 만료는 다시 연결해야 합니다.
+OAuth state + 브라우저 HttpOnly 쿠키 + PKCE를 검증합니다. 계정 연결은 정확히 `127.0.0.1:3080`에서 시작하세요.
+캘린더 생성 요청의 응답이 유실되면 중복 생성을 막기 위해 생성 대기 상태로 잠깁니다. 임의 재생성하지 말고 Google에서 먼저 확인하세요.
+
+## Meta 설정 및 수집 범위
+
+기존 Reelbox 계정·앱·토큰을 사용하지 않습니다. 새 프로젝트용 Facebook 계정으로 개발자 화면에 로그인합니다.
+Facebook Login 방식의 새 Meta 앱, 본인 Instagram 프로페셔널 계정과 연결된 Facebook 페이지를 준비합니다.
+Business Discovery의 권한과 현재 Graph API 버전은 새 앱 화면/공식 문서에서 확인해야 합니다.
+초기 설정에서 `instagram_basic`, `instagram_manage_insights`, `pages_read_engagement`,
+페이지 탐색용 `pages_show_list`가 필요한지 실제 로그인 방식과 역할에 맞춰 확인합니다.
+접근 실패는 개인 계정이라는 증거가 아닙니다. 프로페셔널 대상도 권한·연결·앱 접근 수준 문제로 실패할 수 있습니다.
+
+1. 새 앱에서 발급한 액세스 토큰, 본인 Instagram ID, Graph API 버전을 로컬 연결 화면에 입력.
+2. 본인 계정 조회 성공 후에만 암호화 저장.
+3. 관찰할 공개 계정을 추가. Business Discovery 실제 조회 성공 후 등록됩니다.
+4. 계정별 `지금 수집`으로 시험한 후 `자동 수집 켜기` 선택.
+
+자동 수집은 서버가 실행되는 동안 60분 주기. 최초 최근 10개, 이후 최근 30개(최대 3페이지)를 확인합니다.
+더 과거 글까지 무제한 수집하지 않으며 범위를 초과하면 화면에 경고합니다. 이 범위보다 많은 글이 올라오면 놓칠 수 있습니다.
+한 번에 최대 5개 게시물을 분석하고, 남은 대기는 다음 주기에 처리합니다. 수동 분석과 하루 20회 상한을 공유합니다.
+실패 게시물은 최대 3회 시도. 일일 상한 또는 다른 분석 진행 중이면 시도 횟수를 소모하지 않고 대기합니다.
+영상은 건너뛰고, 사진 3장 초과 게시물은 일부를 임의 누락하지 않고 수동 확인 대상으로 표시합니다.
+이미지 CDN의 단기 서명 URL 변경만으로 AI를 다시 호출하지 않습니다. 캡션/미디어 ID 변경은 재분석합니다.
+서로 다른 게시물의 같은 행사인지 의미를 비교하는 중복 감지는 미구현입니다.
+게시물 삭제·취소를 자동으로 캘린더 삭제로 해석하지 않습니다. 변경된 추출 결과는 새 검토가 필요합니다.
+
+## 검증 상태
+
+2026-11-12: 기존 기능 및 연동 모의 테스트 총 14개 통과.
+OAuth 요청 검증/재연결, 커밋 후 응답 유실 시 중복 생성 방지, 날짜 경계, 암호화 저장,
+Meta 권한 오류 분류/CDN 제한/중복 수집/일일 한도 대기를 포함합니다.
+실제 Meta 조회·실제 Google 일정 생성은 계정 설정 완료 후 추가 검증해야 합니다.
+
+연동 공식 참고:
+- https://developers.google.com/identity/protocols/oauth2/web-server
+- https://developers.google.com/workspace/calendar/api/auth
+- https://developers.google.com/workspace/calendar/api/v3/reference/events/insert
+- https://developers.facebook.com/docs/instagram-platform/instagram-api-with-facebook-login/business-discovery/
 
 공식 API 참고:
 - https://developers.openai.com/api/docs/guides/images-vision

@@ -30,7 +30,7 @@ function field(name, label, value, type = 'text') {
   if (type !== 'textarea') i.type = type;
   i.dataset.field = name; i.value = value ?? ''; l.append(i); return l;
 }
-function invalidate() { $('confirmed').checked = false; $('download').hidden = true; $('result-badge').textContent = '검토 중'; }
+function invalidate() { $('confirmed').checked = false; $('download').hidden = true; $('google-publish').hidden = true; $('result-badge').textContent = '검토 중'; }
 function render(row) {
   current = row; $('empty').hidden = true; $('results').hidden = false; $('confirmed').checked = false;
   $('summary').textContent = row.result.summary;
@@ -58,6 +58,7 @@ function render(row) {
   $('save').disabled = !events.length;
   $('confirmed').parentElement.hidden = !events.length;
   $('download').hidden = !row.reviewed;
+  $('google-publish').hidden = !row.reviewed;
   $('download').href = `/api/analyses/${row.id}/calendar.ics`;
   $('download').download = 'events.ics';
   $('result-badge').textContent = row.reviewed ? '확인 완료' : `${events.length}개 후보`;
@@ -95,3 +96,52 @@ $('save').onclick = async () => {
 };
 $('refresh').onclick = () => Promise.all([status(), history()]).catch(e => message(e.message));
 Promise.all([status(), history()]).catch(e => message(e.message));
+
+const connectionMessage = text => { $('connection-message').textContent = text; };
+async function connections() {
+  const s = await api('/api/integrations');
+  $('google-status').textContent = s.google.calendar ? `연결 완료 · ${s.google.calendar}` : s.google.connected ? 'Google 승인 완료 · 전용 캘린더 생성 필요' : s.google.configured ? '클라이언트 설정 완료 · 계정 연결 필요' : '새 Google OAuth 클라이언트 설정 필요';
+  if (s.google.calendarPending) $('google-status').textContent += ' · 이전 캘린더 생성 결과 확인 필요';
+  $('google-connect').disabled = !s.google.configured;
+  $('google-calendar').disabled = !s.google.connected || !!s.google.calendar || s.google.calendarPending;
+  $('meta-status').textContent = s.meta.configured ? `연결 설정됨 · @${s.meta.account} · ${s.meta.version}` : '새 Meta 앱·토큰 설정 필요';
+  $('watch-list').replaceChildren();
+  for (const a of s.collector.accounts) {
+    const row = el('div', undefined, 'history-row'), info = el('div');
+    info.append(el('strong', `@${a.username}`), el('small', `${a.enabled ? '자동 수집 켜짐' : '자동 수집 꺼짐'} · 마지막 확인 ${a.last_checked ? new Date(a.last_checked).toLocaleString('ko-KR') : '없음'}`));
+    if (a.error) info.append(el('p', a.error, 'small'));
+    const actions = el('div', undefined, 'actions'), toggle = el('button', a.enabled ? '자동 수집 끄기' : '자동 수집 켜기', 'secondary'), poll = el('button', '지금 수집', 'secondary');
+    toggle.onclick = () => runConnection(async () => { await api('/api/meta/enable', { username: a.username, enabled: !a.enabled }); return '자동 수집 설정을 저장했습니다.'; });
+    poll.onclick = () => runConnection(async () => { poll.disabled = true; connectionMessage('게시물을 조회하고 분석 중입니다. 잠시 기다려 주세요.'); await api('/api/meta/poll', { username: a.username }); await Promise.all([history(), status()]); return '수집이 끝났습니다. 처리 기록과 분석 결과를 확인하세요.'; });
+    actions.append(toggle, poll); row.append(info, actions); $('watch-list').append(row);
+  }
+  $('post-log').replaceChildren();
+  const names = { pending: '분석 대기', running: '분석 중', complete: '분석 완료', failed: '분석 실패', skipped: '수동 확인 필요' };
+  for (const p of s.collector.posts) $('post-log').append(el('p', `@${p.username} · ${p.id} · ${names[p.status]}${p.error ? ` · ${p.error}` : ''}`, 'small'));
+}
+async function runConnection(fn) {
+  try { connectionMessage(await fn()); } catch (e) { connectionMessage(e.message); }
+  finally { await connections().catch(() => {}); }
+}
+$('connection-refresh').onclick = () => connections().catch(e => connectionMessage(e.message));
+$('google-config').onclick = () => runConnection(async () => {
+  const file = $('google-json').files[0]; if (!file || file.size > 100000) throw new Error('Google 클라이언트 JSON 파일을 선택하세요.');
+  let config; try { config = JSON.parse(await file.text()); } catch { throw new Error('JSON 파일을 읽을 수 없습니다.'); }
+  await api('/api/google/config', config); $('google-json').value = ''; return '클라이언트를 암호화 저장했습니다.';
+});
+$('google-connect').onclick = () => runConnection(async () => { const { url } = await api('/api/google/connect', {}); window.location.assign(url); return 'Google 로그인 화면으로 이동합니다.'; });
+$('google-calendar').onclick = () => runConnection(async () => { await api('/api/google/calendar', {}); return '모아 전용 캘린더를 만들었습니다.'; });
+$('meta-config').onclick = () => runConnection(async () => {
+  try { await api('/api/meta/config', { ig_id: $('meta-id').value.trim(), version: $('meta-version').value.trim(), token: $('meta-token').value.trim() }); return '새 Meta 계정 조회에 성공하고 암호화 저장했습니다.'; }
+  finally { $('meta-token').value = ''; }
+});
+$('watch-add').onclick = () => runConnection(async () => { await api('/api/meta/accounts', { username: $('watch-username').value }); $('watch-username').value = ''; return '계정 조회를 확인했습니다. 자동 수집을 켜거나 지금 수집을 선택하세요.'; });
+$('google-publish').onclick = async () => {
+  $('google-publish').disabled = true;
+  try {
+    const r = await api(`/api/analyses/${current.id}/google`, { confirmed: true });
+    message(r.reused ? '이미 등록된 일정입니다. 중복 생성하지 않았습니다.' : '모아 전용 Google 캘린더에 일정을 등록했습니다.');
+  } catch (e) { message(e.message); }
+  finally { $('google-publish').disabled = false; }
+};
+connections().catch(e => connectionMessage(e.message));
