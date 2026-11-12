@@ -178,3 +178,10 @@ Meta/Google 재연결 필요 상태와 실패 시도 횟수 표시를 추가했�
 배포판은 추출 직후 `(검토 필요)` 일정으로 Google에 자동 등록하고, 검토 저장 시 동일 일정을 갱신합니다. 날짜 없는 후보는 등록 대기, 시간이 불확실하면 날짜만 임시 표시합니다. 이 동작은 클라우드 배포판에 적용됩니다.
 개인정보처리방침 `/privacy.html`, 이용 안내 `/terms.html`, 삭제 안내 `/data-deletion.html`을 게시했습니다. Google 프로덕션 전환과 Meta 게시 완료, Google 브랜드 인증 보완은 진행 중입니다.
 승인받은 이메일 회원의 구독 1개·검토 1건(일정 5개)을 이관했으며 기존 캘린더와 일정 ID를 보존했습니다. qa-owner 개인 기록은 제외했습니다. 모의 Google 전환·중복 방지·이관 ID 보존을 포함한 테스트 29개 통과. 상세 운영 상태는 `cloud/DEPLOYMENT.md` 참고.
+
+### Git 기반 배포
+
+GitHub 비공개 저장소: https://github.com/briansong17/moapick-calendar
+`main` 브랜치를 기존 Vercel `moa-calendar` 프로젝트에 연결했습니다. 변경사항을 커밋하고 `git push origin main` 하면 Vercel이 빌드합니다. 환경변수는 Vercel 설정에서 관리하며 Git에 저장하지 않습니다. 빌드: `node cloud/build.mjs`, 테스트: `npm test`.
+
+배포판 UI는 `cloud/index.html`, `cloud/style.css`, `cloud/navigation.js`에서 관리합니다. 로컬 전용 서버 UI는 `public/`에 있습니다. 디자인 근거는 `DESIGN.md` 참고.
