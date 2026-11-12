@@ -42,6 +42,11 @@ html=html.replace(/모아(?!픽)/g,'모아픽 캘린더').replace('<span>moa</sp
 js=js.replace(/모아(?!픽)/g,'모아픽 캘린더');
 html=await readFile('cloud/index.html','utf8');
 js+='\n'+await readFile('cloud/navigation.js','utf8');
+js=js.replace("$('connection-message').textContent = text;", "$('connection-message').textContent = text; $('settings-status').textContent=text;");
+js=js.replace('`연결 설정됨 · @${s.meta.account} · ${s.meta.version}`', "'자동 수집 사용 가능'").replace('새 Meta 앱·토큰 설정 필요','자동 수집 연결을 준비 중입니다.').replace('클라이언트 설정 완료 · 계정 연결 필요','Google 계정을 연결하세요.').replace('새 Google OAuth 클라이언트 설정 필요','캘린더 연결을 준비 중입니다.');
+js=js.replace("'원문과 비교하고 필요한 정보를 수정해 주세요. 캘린더에는 (검토 필요)로 임시 표시합니다. 날짜 없는 후보는 등록 대기입니다.'", "(row.reviewed?'검토한 일정입니다. 수정 후 저장하면 캘린더에 반영됩니다.':'원문과 비교한 뒤 저장하세요. 날짜가 없으면 캘린더 등록을 기다립니다.')");
+js=js.replace('await Promise.all([history(), status()]);','await Promise.all([history(), status(),loadManagedEvents()]);');
+
 js=js.replace("function render(row) {","function render(row) { openView('review');");
 js=js.replace("$('auth-title').textContent=signedIn?","$('auth-panel').hidden=!!signedIn;$('member-email').textContent=signedIn?.login??'';$('settings-email').textContent=signedIn?.login??''; $('auth-title').textContent=signedIn?");
 await writeFile('dist/index.html',html);await writeFile('dist/app.js',js);await copyFile('cloud/style.css','dist/style.css');

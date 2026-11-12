@@ -14,7 +14,7 @@ let eventFilter='all',eventSearch='',eventDate='';
 let calendarMonth=new Date(new Date().getFullYear(),new Date().getMonth(),1);
 function renderManagedEvents(){
  $('managed-events').replaceChildren();const all=[...managedEvents.values()];
- const items=all.filter(i=>(eventFilter==='all'||(eventFilter==='reviewed')===i.reviewed)&&i.event.title.toLowerCase().includes(eventSearch)&&(!eventDate||i.event.start_date===eventDate)).sort((a,b)=>(a.event.start_date??'9999').localeCompare(b.event.start_date??'9999'));
+ const items=all.filter(i=>(eventFilter==='all'||(eventFilter==='reviewed')===i.reviewed)&&i.event.title.toLowerCase().includes(eventSearch)&&(!eventDate||i.event.start_date===eventDate)).sort((a,b)=>{const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Seoul',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());const rank=i=>!i.event.start_date?2:(i.event.end_date??i.event.start_date)<today?1:0;return rank(a)-rank(b)||(a.event.start_date??'9999').localeCompare(b.event.start_date??'9999');});
  for(const item of items){const key=eventKey(item),card=el('div',undefined,'managed-row');
  const check=el('input');check.type='checkbox';check.dataset.eventKey=key;check.setAttribute('aria-label',item.event.title+' 선택');
  const date=el('div',item.event.start_date?.slice(8)??'—','date-tile');date.append(el('small',item.event.start_date?Number(item.event.start_date.slice(5,7))+'월':'날짜 미정'));
