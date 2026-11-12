@@ -92,8 +92,9 @@ OAuth state + 브라우저 HttpOnly 쿠키 + PKCE를 검증합니다. 계정 연
 관리 화면 링크에 표시된 asset_id: `1435601266305062` (API 페이지 ID는 토큰 발급 후 조회로 확인 예정).
 Instagram `@springintiger` 가입 및 비즈니스 프로페셔널 전환 완료(소프트웨어, 연락처 비공개). 사용자 승인으로 `송해근` 비즈니스 포트폴리오에 추가하고 Facebook 페이지 연결 완료를 확인했습니다.
 Instagram 이용 사례의 Facebook Login API 설정 화면까지 확인했습니다.
-앱의 조회 권한 `instagram_basic`, `instagram_manage_insights`, `pages_read_engagement`, `pages_show_list`가 테스트 준비 완료 상태입니다. 토큰 발급·실제 조회 검증은 미완료입니다.
-Facebook 로그인 구성 `Moa Read Only` 생성 완료(ID `3190350967977453`, 일반/사용자 토큰/위 네 권한). Graph API 탐색기에 표시된 버전은 `v27.0`입니다. 토큰 발급과 로컬 저장 승인 대기 중입니다.
+앱의 조회 권한 `instagram_basic`, `instagram_manage_insights`, `pages_read_engagement`, `pages_show_list`가 테스트 준비 완료 상태입니다. 사용자 승인 후 토큰 발급, 본인 계정 실제 조회, 로컬 암호화 저장에 성공했습니다.
+Facebook 로그인 구성 `Moa Read Only` 생성 완료(ID `3190350967977453`, 일반/사용자 토큰/위 네 권한). API 버전 `v27.0`, 본인 Instagram ID `17841466128060201`, 페이지 ID `1435601266305062`를 사용했습니다. 권한은 현재 Moa 페이지 1개와 springintiger 계정 1개로 제한했습니다.
+수집할 공개 계정 목록은 사용자 지정 대기 중이며 자동 수집은 아직 활성화하지 않았습니다. 타 계정 Business Discovery 및 실제 게시물 수집은 추가 검증이 필요합니다.
 Facebook Login 방식의 새 Meta 앱, 본인 Instagram 프로페셔널 계정과 연결된 Facebook 페이지를 준비합니다.
 Business Discovery의 권한과 현재 Graph API 버전은 새 앱 화면/공식 문서에서 확인해야 합니다.
 초기 설정에서 `instagram_basic`, `instagram_manage_insights`, `pages_read_engagement`,
@@ -119,7 +120,7 @@ Business Discovery의 권한과 현재 Graph API 버전은 새 앱 화면/공식
 2026-11-12: 기존 기능 및 연동 모의 테스트 총 14개 통과.
 OAuth 요청 검증/재연결, 커밋 후 응답 유실 시 중복 생성 방지, 날짜 경계, 암호화 저장,
 Meta 권한 오류 분류/CDN 제한/중복 수집/일일 한도 대기를 포함합니다.
-실제 Meta 조회·실제 Google 일정 생성은 계정 설정 완료 후 추가 검증해야 합니다.
+실제 Meta 본인 계정 조회와 Google 보조 캘린더 생성은 성공했습니다. 타 계정 게시물 수집 및 실제 Google 일정 생성은 추가 검증해야 합니다.
 
 연동 공식 참고:
 - https://developers.google.com/identity/protocols/oauth2/web-server
