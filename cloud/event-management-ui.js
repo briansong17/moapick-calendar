@@ -21,7 +21,7 @@ function renderManagedEvents(){
  const info=el('div'),title=el('button',item.event.title,'managed-title');title.onclick=async()=>{try{render(await api('/api/analyses/'+item.analysis_id));}catch(e){$('event-status').textContent=e.message;}};
  info.append(title,el('small',[item.event.start_time??'종일',item.event.location].filter(Boolean).join(' · '),'event-meta'));
  const state=el('span',item.reviewed?'검토 완료':'검토 필요','event-state'+(item.reviewed?'':' pending'));
- const remove=el('button','×','row-delete');remove.type='button';remove.setAttribute('aria-label',item.event.title+' 삭제');remove.onclick=()=>deleteManaged([key]);card.append(check,date,info,state,remove);$('managed-events').append(card);
+ const remove=el('button','×','row-delete');remove.type='button';remove.setAttribute('aria-label',item.event.title+' 삭제');remove.onclick=()=>deleteManaged([key]);const selection=el('label',undefined,'event-select');selection.append(check);card.append(selection,date,info,state,remove);$('managed-events').append(card);
  }
  $('event-count').textContent=String(all.length);$('nav-count').textContent=String(all.length);$('events-select-all').checked=false;
  if(!items.length){const empty=el('div',undefined,'list-empty');empty.append(el('strong',all.length?'일정이 없습니다.':'아직 모인 일정이 없어요.'),el('p',all.length?'검색어나 필터를 바꿔 보세요.':'계정을 구독하거나 행사 이미지를 추가해 보세요.'));$('managed-events').append(empty);}

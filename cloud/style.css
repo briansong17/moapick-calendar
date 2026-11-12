@@ -3,3 +3,39 @@
 body:not(:has(.sidebar)) main{max-width:820px;margin:0 auto;padding:50px 28px}body:not(:has(.sidebar)) h2{margin-top:32px}body:not(:has(.sidebar)) p,body:not(:has(.sidebar)) li{font-size:14px;line-height:1.9}
 /* Secondary text stays readable against the paper canvas. */
 .page-heading p:not(.eyebrow),.eyebrow,.topbar,.topbar button,.event-meta,.date-tile small,.search,.filters button,.bulk-toolbar>label,.text-button,.context-note p,.calendar-link,.small,.privacy,.history-row small,.evidence,#summary,.sidebar-note{color:#6e7868}.weekdays,#mini-calendar button{color:#737d6c}#mini-calendar button.today{color:#fff}.row-delete{color:#87907d}#event-status{color:#926423}.sidebar-bottom>a{color:#6d7964}.event-state{color:#4e6b43}.event-state.pending{color:#866032}@media(max-width:650px){.sidebar nav{display:grid;grid-template-columns:repeat(5,1fr);gap:3px}.sidebar nav button{justify-content:center;white-space:nowrap;padding:9px 2px;font-size:11px;letter-spacing:-.4px}.sidebar nav button>span:first-child{display:none}.page-heading>.primary{font-size:11px}.managed-title{font-size:13px}.event-meta{font-size:11px}.settings-row .actions{width:100%}}
+/* Comfortable touch targets without changing desktop layout or event actions. */
+.event-select{display:flex;align-items:center;justify-content:center;margin:0;cursor:pointer}
+.history-row>div:first-child{min-width:0;overflow-wrap:anywhere}
+.history-row>button{flex-shrink:0;white-space:nowrap}
+@media(max-width:1100px){
+ .context-panel{display:block;border-left:0;border-top:1px solid var(--line);padding:24px 0 0;max-width:420px;width:100%}
+ .month-heading button{min-width:44px;min-height:44px}
+ #mini-calendar button{font-size:14px;min-height:36px}
+ .calendar-link{font-size:14px;min-height:48px}
+}
+@media(max-width:650px){
+ .sidebar{padding:8px 12px}.brand{font-size:17px}.brand-mark{width:25px;height:25px;line-height:25px;font-size:18px}
+ .sidebar nav{margin-top:6px;gap:2px}.sidebar nav button{min-height:44px;font-size:12px;letter-spacing:-.5px}
+ .topbar{height:44px;padding:0 16px}.topbar button{min-height:44px;padding:0 8px;font-size:12px}
+ section[data-page]{padding:24px 16px 40px}.page-heading{flex-wrap:wrap;align-items:center;margin-bottom:22px}.page-heading p:not(.eyebrow){font-size:13px}
+ .eyebrow{font-size:11px}.primary,.secondary,.page-heading>.primary{min-height:44px;font-size:14px;padding:10px 14px}
+ .text-button,.danger-link{min-height:44px;padding:10px 8px;font-size:13px}.filters{gap:16px}.filters button{font-size:13px;min-height:44px}
+ #events-reload{min-width:44px;font-size:20px}#event-count{font-size:12px}
+ .search{margin:12px 0}.search input{max-width:none;min-width:0;min-height:44px;font-size:16px}
+ .bulk-toolbar{gap:8px;flex-wrap:wrap;padding:4px 0}.bulk-toolbar>label{min-height:44px;font-size:12px;gap:6px}.bulk-toolbar button{font-size:12px}
+ input[type=checkbox]{width:20px!important;height:20px;flex-shrink:0}
+ .managed-row{grid-template-columns:44px 32px minmax(0,1fr) 44px;gap:8px;padding:14px 0}
+ .event-select{min-width:44px;min-height:44px;grid-column:1;grid-row:1}
+ .managed-title{min-height:44px;font-size:15px;overflow-wrap:anywhere;line-height:1.5}.managed-row>div{min-width:0}
+ .event-meta{font-size:12px;overflow-wrap:anywhere}.event-state{font-size:12px;grid-column:3 / 5;margin-top:0}.row-delete{width:44px;min-height:44px;font-size:22px}
+ label{font-size:14px}input,textarea,select{font-size:16px;min-height:44px;min-width:0}::placeholder{font-size:14px}
+ .upload{padding:24px 12px}.upload input{font-size:14px;max-width:100%;padding:8px 0}.upload span:last-of-type{font-size:12px}
+ .small,.privacy,.notice,.evidence,.review-note,#message,#summary{font-size:13px;color:#626e59}.optional{font-size:12px;color:#68745f}
+ .history-row{align-items:flex-start;gap:12px}.history-row strong{font-size:15px}.history-row small{font-size:12px;color:#626e59}
+ .history-row button{min-height:44px;min-width:60px;font-size:13px;white-space:nowrap}
+ #watch-list .history-row{flex-direction:column}#watch-list .actions{width:100%;gap:8px}#watch-list .actions button{padding:8px;flex:1}
+ .help-details{font-size:14px}.help-details summary{min-height:44px;padding:10px 0}.settings-row h3{font-size:16px}.policy-links{font-size:13px}.policy-links a{padding:10px 0}
+ .confirm{min-height:44px;line-height:1.6}.context-panel{max-width:none}.context-note{display:none}.calendar-link{color:#3c513c;padding:16px 0;margin-top:16px}
+ dialog{padding:22px;width:calc(100% - 32px)}dialog p{font-size:14px;color:#626e59}dialog button{min-height:44px}
+ .login{padding:40px 20px}.login h1{font-size:36px}.login .privacy{font-size:13px}.skip{left:12px}
+}
