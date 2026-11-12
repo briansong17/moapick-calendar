@@ -65,9 +65,11 @@ Google 직접 등록은 분석 ID에 연결된 고정 이벤트 ID로 중복을 
 
 새 프로젝트: **Moa Instagram Calendar**, ID `astute-helper-514510-d7`.
 Calendar API 활성화, OAuth 동의 화면 및 웹 클라이언트 `Moa Local Web` 생성 완료.
+본인 Google Cloud 계정을 테스트 사용자로 등록 완료. 요청 범위는 `calendar.app.created`만 등록했습니다.
 클라이언트 ID: `179396803727-ofdr1mn43hqmes6el2jjqfrr5ht5edbr.apps.googleusercontent.com`.
 인증 JSON 다운로드가 완료되지 않아 로컬 자격증명 저장과 실제 Google 승인은 아직 미완료입니다.
 Google 화면은 생성된 보안 비밀번호를 재열람할 수 없다고 안내하므로 사용자가 새 보안 비밀번호를 추가하고 안전하게 저장하는 단계가 필요합니다.
+JSON 다운로드 대신 로컬 Google 설정의 직접 입력란에 클라이언트 ID와 새 보안 비밀번호를 입력하고 저장할 수도 있습니다. 비밀번호를 채팅에 보내지 않습니다.
 
 1. 새 프로젝트에서 Google Calendar API 활성화(약관 동의 필요).
 2. Google Auth Platform에서 앱 표시 이름/지원 이메일/개발자 연락처/외부 테스트 사용자를 설정.
