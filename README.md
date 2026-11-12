@@ -67,9 +67,8 @@ Google 직접 등록은 분석 ID에 연결된 고정 이벤트 ID로 중복을 
 Calendar API 활성화, OAuth 동의 화면 및 웹 클라이언트 `Moa Local Web` 생성 완료.
 본인 Google Cloud 계정을 테스트 사용자로 등록 완료. 요청 범위는 `calendar.app.created`만 등록했습니다.
 클라이언트 ID: `179396803727-ofdr1mn43hqmes6el2jjqfrr5ht5edbr.apps.googleusercontent.com`.
-인증 JSON 다운로드가 완료되지 않아 로컬 자격증명 저장과 실제 Google 승인은 아직 미완료입니다.
-Google 화면은 생성된 보안 비밀번호를 재열람할 수 없다고 안내하므로 사용자가 새 보안 비밀번호를 추가하고 안전하게 저장하는 단계가 필요합니다.
-JSON 다운로드 대신 로컬 Google 설정의 직접 입력란에 클라이언트 ID와 새 보안 비밀번호를 입력하고 저장할 수도 있습니다. 비밀번호를 채팅에 보내지 않습니다.
+사용자가 새 보안 비밀번호를 로컬 앱에 직접 저장했고 OAuth 승인 및 전용 캘린더 `모아 · Instagram 일정` 생성이 완료됐습니다.
+실제 일정 등록은 아직 검증하지 않았습니다. 인증 콜백은 외부 리디렉션의 Fetch Metadata가 유지되는 문제를 피하도록 성공 문서와 앱 복귀 링크를 제공합니다.
 
 1. 새 프로젝트에서 Google Calendar API 활성화(약관 동의 필요).
 2. Google Auth Platform에서 앱 표시 이름/지원 이메일/개발자 연락처/외부 테스트 사용자를 설정.
@@ -88,8 +87,13 @@ OAuth state + 브라우저 HttpOnly 쿠키 + PKCE를 검증합니다. 계정 연
 
 기존 Reelbox 계정·앱·토큰을 사용하지 않습니다. 새 프로젝트용 Facebook 계정으로 개발자 화면에 로그인합니다.
 새 Meta 앱 `Moa Calendar` 생성 완료. 앱 ID: `2281199932611721`.
+새 Facebook 페이지 `Moa Calendar` 생성 및 초기 설정 완료(카테고리: 소프트웨어).
+페이지 URL: https://www.facebook.com/profile.php?id=61596149956097
+관리 화면 링크에 표시된 asset_id: `1435601266305062` (API 페이지 ID는 토큰 발급 후 조회로 확인 예정).
+Instagram `@springintiger` 가입 및 비즈니스 프로페셔널 전환 완료(소프트웨어, 연락처 비공개). 사용자 승인으로 `송해근` 비즈니스 포트폴리오에 추가하고 Facebook 페이지 연결 완료를 확인했습니다.
 Instagram 이용 사례의 Facebook Login API 설정 화면까지 확인했습니다.
-본인 Instagram 프로페셔널 계정 및 Facebook 페이지 연결·토큰 발급·실제 조회 검증은 미완료입니다.
+앱의 조회 권한 `instagram_basic`, `instagram_manage_insights`, `pages_read_engagement`, `pages_show_list`가 테스트 준비 완료 상태입니다. 토큰 발급·실제 조회 검증은 미완료입니다.
+Facebook 로그인 구성 `Moa Read Only` 생성 완료(ID `3190350967977453`, 일반/사용자 토큰/위 네 권한). Graph API 탐색기에 표시된 버전은 `v27.0`입니다. 토큰 발급과 로컬 저장 승인 대기 중입니다.
 Facebook Login 방식의 새 Meta 앱, 본인 Instagram 프로페셔널 계정과 연결된 Facebook 페이지를 준비합니다.
 Business Discovery의 권한과 현재 Graph API 버전은 새 앱 화면/공식 문서에서 확인해야 합니다.
 초기 설정에서 `instagram_basic`, `instagram_manage_insights`, `pages_read_engagement`,

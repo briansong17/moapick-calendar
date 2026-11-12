@@ -57,7 +57,10 @@ export function makeServer({ store, apiKey, model = 'gpt-5.4-mini', limit = 20, 
           const binding = /(?:^|;\s*)moa_oauth=([a-f0-9]+)/.exec(req.headers.cookie ?? '')?.[1];
           try {
             await google.callback(url.searchParams, binding);
-            res.writeHead(303, { Location: '/?google=connected', 'Set-Cookie': 'moa_oauth=; HttpOnly; SameSite=Lax; Path=/oauth/google; Max-Age=0', 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' }); return res.end();
+            // Commit a same-origin document before returning to the app: a 303
+            // preserves cross-site Fetch Metadata across the OAuth redirect chain.
+            res.setHeader('Set-Cookie', 'moa_oauth=; HttpOnly; SameSite=Lax; Path=/oauth/google; Max-Age=0');
+            return send(200, '<!doctype html><html lang="ko"><meta charset="utf-8"><title>Google 연결 완료</title><h1>Google 계정을 연결했습니다.</h1><p><a href="/?google=connected">모아로 돌아가기</a></p></html>', 'text/html; charset=utf-8');
           } catch (e) { res.setHeader('Set-Cookie', 'moa_oauth=; HttpOnly; SameSite=Lax; Path=/oauth/google; Max-Age=0'); throw e; }
         }
         if (req.method === 'POST' && path === '/api/google/config') { google.configure(await body(req)); return send(200, { saved: true }); }
