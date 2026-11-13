@@ -18,6 +18,8 @@ test('배포 API는 서버 검증한 회원만 사용하며 RLS에 사용자 토
  assert.equal((await req('/api/analyses',{cookie:'__Host-moa='+sessionId})).status,200);
  assert.deepEqual(readTokens,['verified-user-token','verified-user-token']);
  assert.equal((await req('/api/analyses/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/review',{cookie:'__Host-moa='+sessionId,body:{confirmed:true,events:[]}})).status,404);
+ assert.equal((await req('/api/diagnostics')).status,401);
+ const diagnostic=await req('/api/diagnostics',{cookie:'__Host-moa='+sessionId});assert.equal(diagnostic.status,200);assert.deepEqual(diagnostic.value.jobs,[]);assert.deepEqual(diagnostic.value.analyses,[]);assert.doesNotMatch(JSON.stringify(diagnostic.value),/verified-user-token|fixture@example/);
  assert.equal(writes,0);
  assert.equal((await req('/api/auth/google',{body:{},origin:'https://evil.example'})).status,403);
  assert.equal((await req('/api/cron')).status,401);

@@ -1,4 +1,4 @@
-const viewNames={events:'내 일정',subscriptions:'구독',upload:'이미지 추가',history:'분석 기록',settings:'설정',review:'일정 검토'};
+const viewNames={diagnostics:'진행상황',events:'내 일정',subscriptions:'구독',upload:'이미지 추가',history:'분석 기록',settings:'설정',review:'일정 검토'};
 function openView(view,writeHash=true){
  if(!viewNames[view])view='events';document.querySelectorAll('[data-page]').forEach(p=>p.hidden=p.dataset.page!==view);
  document.querySelectorAll('[data-view]').forEach(b=>{if(b.dataset.view===view)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});

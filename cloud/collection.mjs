@@ -1,3 +1,4 @@
+import {trace} from './diagnostics.mjs';
 import {randomUUID} from 'node:crypto';
 import {AppError,validateInput,inputHash,extract} from '../lib/extraction.mjs';
 import {accountName,contentHash,createInstagram} from '../lib/instagram.mjs';
@@ -14,18 +15,18 @@ export function createCollection({db,env,analyze=extract,instagram,onComplete=as
   }
   async function analyzeInput(raw,userId=null) {
     if(!env.OPENAI_API_KEY)throw new AppError('이미지 분석 연결 준비 중입니다.',503);
-    const input=validateInput(raw,{maxImages:userId?3:20});
+    trace('image.validate');const input=validateInput(raw,{maxImages:userId?3:20});trace('image.validated',{count:input.images.length});
     const hash=inputHash(input,model+':'+(userId??'public-instagram'));
     return locked('analysis',async()=>{
       const [cached]=await db.admin('moa_analyses',{hash:`eq.${hash}`,status:'eq.complete',limit:'1'});
-      if(cached){await onComplete(cached);return cached;}
+      if(cached){trace('analysis.cache',{analysisId:cached.id,cached:true});await onComplete(cached);return cached;}
       if(!await db.rpc('moa_take_limit',{p_bucket:'analysis:'+day(),p_limit:Number(env.DAILY_ANALYSIS_LIMIT||20),p_seconds:86400}))throw new AppError('오늘의 분석 한도에 도달했습니다.',429);
       const {images,...metadata}=input;
       const [row]=await db.admin('moa_analyses',{}, {method:'POST',prefer:'return=representation',body:{owner_id:userId,account:userId?null:input.account,hash,status:'running',metadata:{...metadata,image_count:images.length,model}}});
       let completed;
-      try{const {result,usage}=await analyze(input,{apiKey:env.OPENAI_API_KEY,model});
-        await db.admin('moa_analyses',{id:`eq.${row.id}`},{method:'PATCH',body:{status:'complete',result,usage}});completed={...row,status:'complete',result,usage};
-      }catch(e){await db.admin('moa_analyses',{id:`eq.${row.id}`},{method:'PATCH',body:{status:'failed',error:e instanceof AppError?e.message:'분석 실패'}});throw e;}
+      try{trace('openai.start',{analysisId:row.id});const {result,usage}=await analyze(input,{apiKey:env.OPENAI_API_KEY,model});
+        trace('openai.complete',{analysisId:row.id,count:result.events.length});await db.admin('moa_analyses',{id:`eq.${row.id}`},{method:'PATCH',body:{status:'complete',result,usage}});completed={...row,status:'complete',result,usage};
+      }catch(e){trace('openai.failed',{status:e.status??500});await db.admin('moa_analyses',{id:`eq.${row.id}`},{method:'PATCH',body:{status:'failed',error:e instanceof AppError?e.message:'분석 실패'}});throw e;}
       await onComplete(completed);return completed;
     });
   }

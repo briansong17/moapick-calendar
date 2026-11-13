@@ -49,5 +49,17 @@ js=js.replace('await Promise.all([history(), status()]);','await Promise.all([hi
 
 js=js.replace("function render(row) {","function render(row) { openView('review');");
 js=js.replace("$('auth-title').textContent=signedIn?","$('auth-panel').hidden=!!signedIn;$('member-email').textContent=signedIn?.login??'';$('settings-email').textContent=signedIn?.login??''; $('auth-title').textContent=signedIn?");
+// Instrument only the cloud bundle; keep the local application independent.
+const diagnosticUI=(await readFile('cloud/diagnostics-ui.js','utf8')).replace('__BUILD_ID__',process.env.VERCEL_GIT_COMMIT_SHA?.slice(0,12)||'local');
+js=diagnosticUI+'\n'+js;
+js=js.replace(/async function api\(path, data\) \{[\s\S]*?\n\}/, 'async function api(path,data){return diagnosticApi(path,data);}');
+js=js.replace("function message(text) { $('message').textContent = text; }", "function message(text) { $('message').textContent=text;diagnosticNotice(text); }");
+js=js.replace("signedIn=state.user;", "signedIn=state.user;diagnosticBind(signedIn);");
+js=js.replace("previewUrls.forEach(URL.revokeObjectURL);", "diagnosticLog('image.selected',{count:$('images').files.length,bytes:[...$('images').files].reduce((n,f)=>n+f.size,0)});previewUrls.forEach(URL.revokeObjectURL);");
+js=js.replace("const readImage = file => new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(r.result); r.onerror = () => reject(new Error('이미지를 읽지 못했습니다.')); r.readAsDataURL(file); });", "const readImage = file => new Promise((resolve,reject)=>{diagnosticLog('image.read.start',{bytes:file.size});const r=new FileReader();r.onload=()=>{diagnosticLog('image.read.complete',{bytes:file.size});resolve(r.result);};r.onerror=r.onabort=()=>{diagnosticLog('image.read.failed');reject(new Error('이미지를 읽지 못했습니다.'));};r.readAsDataURL(file);});");
+js=js.replace("await Promise.all([status(), history()]).catch(() => {});", "await Promise.all([status(),history(),loadManagedEvents()]).catch(()=>{});");
+js=js.replace("message(r.reused ?", "message(r.pending ? 'Google 반영 대기 중입니다. 진행상황에서 확인해 주세요.' : r.blocked?.length ? '날짜가 없는 일정은 등록 대기입니다. 진행상황에서 확인해 주세요.' : r.reused ?");
+js=js.replace("$('settings-status').textContent=text;","$('settings-status').textContent=text;diagnosticNotice(text);");
+js+='\nsetupDiagnostics();';
 await writeFile('dist/index.html',html);await writeFile('dist/app.js',js);await copyFile('cloud/style.css','dist/style.css');
 await buildPolicies();

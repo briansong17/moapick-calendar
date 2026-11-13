@@ -1,3 +1,4 @@
+import {trace} from './diagnostics.mjs';
 import {OAuth2Client} from 'google-auth-library';
 import {randomBytes} from 'node:crypto';
 import {AppError} from '../lib/extraction.mjs';
@@ -10,16 +11,23 @@ export function createCloudGoogle({db,crypto,env,locked,clientFactory=options=>n
   const read=async uid=>{const [r]=await db.admin('moa_google',{user_id:`eq.${uid}`});return r?crypto.open(r.encrypted,`google:${uid}`):{};};
   const save=(uid,value)=>db.admin('moa_google',{}, {method:'POST',prefer:'resolution=merge-duplicates',body:{user_id:uid,encrypted:crypto.seal(value,`google:${uid}`),updated_at:new Date().toISOString()}});
   const operate=(uid,fn)=>locked('google:'+uid,async()=>{
-    const state=await read(uid),c=client(state.tokens);c.on('tokens',t=>{state.tokens={...state.tokens,...t};});
+    const state=await read(uid),c=client(state.tokens);trace('google.credentials',{refresh:!!state.tokens?.refresh_token,expired:(state.tokens?.expiry_date??0)<Date.now(),calendar:!!state.calendar});c.on('tokens',t=>{trace('google.token_refreshed');state.tokens={...state.tokens,...t};});
     const call=async(path,{method='GET',data}={})=>{
-      try{return (await c.request({url:'https://www.googleapis.com/calendar/v3'+path,method,data,retry:false,timeout:30000})).data;}
-      catch(e){const code=e.response?.status;if(code===401||e.response?.data?.error==='invalid_grant'){state.reconnectRequired=true;throw new AppError('Google 인증이 만료되었습니다. 다시 연결하세요.',401);}
+      trace('google.http.start',{method,operation:path.includes('/events')?'events':'calendar'});try{const response=(await c.request({url:'https://www.googleapis.com/calendar/v3'+path,method,data,retry:false,timeout:30000}));trace('google.http.complete',{status:response.status??200});return response.data;}
+      catch(e){const code=e.response?.status;trace('google.http.failed',{status:code??502,code:e.response?.data?.error==='invalid_grant'?'invalid_grant':'provider_error'});if(code===401||e.response?.data?.error==='invalid_grant'){state.reconnectRequired=true;throw new AppError('Google 인증이 만료되었습니다. 다시 연결하세요.',401);}
         if([403,404,409,410].includes(code))throw new AppError('Google 캘린더 권한 또는 기존 일정 상태를 확인하세요.',code);
         throw new AppError('Google 연결에 실패했습니다. 다시 등록해도 같은 일정 ID를 사용합니다.',502);}
     };
     try{return await fn(state,call);}finally{await save(uid,state);}
   });
   return {
+    verifyRecent:uid=>operate(uid,async(s,call)=>{
+      if(!s.calendar)return {connected:false,checked:0};
+      await call('/calendars/'+encodeURIComponent(s.calendar.id));
+      const rows=await db.admin('moa_exports',{user_id:`eq.${uid}`,limit:'100'}),targets=rows.flatMap(r=>(r.event_ids??[]).map(id=>({id,calendar:r.calendar_id,analysisId:r.analysis_id}))).slice(-10),results=[];
+      for(const t of targets){try{const e=await call('/calendars/'+encodeURIComponent(t.calendar)+'/events/'+t.id);results.push({analysisId:t.analysisId,status:e.status==='cancelled'?'cancelled':'present'});}catch(e){results.push({analysisId:t.analysisId,status:'failed',httpStatus:e.status??502});}}
+      return {connected:true,checked:results.length,limited:true,results};
+    }),
     async status(uid){const s=await read(uid);return {configured:!!env.GOOGLE_CALENDAR_CLIENT_ID,connected:!!s.tokens?.refresh_token,calendar:s.calendar?.summary??null,calendarPending:!!s.pending,reconnectRequired:!!s.reconnectRequired};},
     async begin(uid,res){if(!env.GOOGLE_CALENDAR_CLIENT_ID)throw new AppError('캘린더 연결 준비 중입니다.',503);
       const c=client(),state=randomBytes(32).toString('hex'),binding=randomBytes(32).toString('hex');const {codeVerifier,codeChallenge}=await c.generateCodeVerifierAsync();
@@ -50,7 +58,7 @@ export function createCloudGoogle({db,crypto,env,locked,clientFactory=options=>n
       const [legacy]=await db.admin('moa_exports',{user_id:`eq.${uid}`,analysis_id:`eq.${row.id}`,source_user_id:'not.is.null',limit:'1'});
       const calendarId=legacy?.calendar_id??s.calendar.id;
       const {payloads,blocked,reviewed}=calendarPayloads(legacy?.source_user_id??uid,row,env.PUBLIC_ORIGIN);
-      const fingerprint=digest(JSON.stringify({payloads,blocked,reviewed}));
+      trace('google.payloads',{analysisId:row.id,count:payloads.length,blocked:blocked.length});const fingerprint=digest(JSON.stringify({payloads,blocked,reviewed}));
       const query={user_id:`eq.${uid}`,analysis_id:`eq.${row.id}`,calendar_id:`eq.${calendarId}`};
       const [prior]=await db.admin('moa_exports',query);
       if(prior?.status==='complete'&&prior.fingerprint===fingerprint)return {reused:true,links:prior.links,blocked};
