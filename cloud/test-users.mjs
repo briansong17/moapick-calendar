@@ -29,7 +29,12 @@ export function createTestUsers({db,collection,createScoped,dailyLimit=100}){
   trace('test.collect.skipped',{code:subs.length?'not_due':'no_enabled_subscription',blocked:skipped.filter(a=>a.failed).length});return {processed:false,count:0,reason:subs.length?'not_due':'no_enabled_subscription',deferred:skipped};
  });}
  async function reset(uid,input){if(input.confirmation!=='분석 기록 초기화')throw new AppError('확인 문구를 입력해 주세요.');
-  return collection.locked('test-user:'+uid,async()=>{if(!(await preferences(db,uid)).test_user)throw new AppError('테스트 사용자를 먼저 선택하세요.',409);
+  return collection.locked('test-user:'+uid,async()=>{const pref=await preferences(db,uid);if(!pref.test_user)throw new AppError('테스트 사용자를 먼저 선택하세요.',409);
+   // Retain provenance for pre-optimization cached results before the cursor generation changes.
+   for(let offset=0;;offset+=200){const rows=await db.admin('moa_analyses',{owner_id:`eq.${uid}`,...historyQuery(pref),status:'eq.complete',select:'id,metadata',order:'created_at.asc,id.asc',limit:'200',offset:String(offset)});
+    for(const row of rows)if(row.metadata?.model&&row.metadata?.source_url&&!row.metadata.test_generation)await db.admin('moa_analyses',{owner_id:`eq.${uid}`,id:`eq.${row.id}`},{method:'PATCH',body:{metadata:{...row.metadata,test_generation:pref.generation}}});
+    if(rows.length<200)break;
+   }
    await db.rpc('moa_reset_test_history',{p_user:uid});trace('test.history.reset');return {ok:true};});}
  return {run,reset};
 }

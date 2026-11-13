@@ -36,13 +36,15 @@ test('test storage adds owner to every read/write and reset requires confirmatio
  reset=undefined;tables.moa_preferences[0].test_user=false;await assert.rejects(t.reset('owner',{confirmation:'분석 기록 초기화'}));assert.equal(reset,undefined);
  assert.deepEqual(historyQuery({history_reset_at:'cutoff'}),{created_at:'gte.cutoff'});
 });
-test('excluded media does not invoke AI and a reset generation prevents stale cache reuse',async()=>{
+test('excluded media never invokes AI and reset creates a fresh record by reusing the same result',async()=>{
  const {db,tables}=fixture();let analyzed=0;
  const build=generation=>createCollection({db:testDatabase(db,'owner'),scope:{uid:'owner',generation},env:{OPENAI_API_KEY:'fake'},instagram:{page:async()=>({after:null,posts:[{id:'1',media_type:'VIDEO'}]})},analyze:async()=>{analyzed++;return {result:{events:[]}};}});
  await testDatabase(db,'owner').admin('moa_accounts',{}, {method:'POST',body:{username:'a'}});
  await build('first').poll('a');assert.equal(analyzed,0);assert.equal(tables.moa_test_posts[0].status,'skipped');
  await build('first').analyzeInput({images:[image]});await build('first').analyzeInput({images:[image]});assert.equal(analyzed,1);
- await build('reset').analyzeInput({images:[image]});assert.equal(analyzed,2);
+ const reset=await build('reset').analyzeInput({images:[image]});assert.equal(analyzed,1);assert.equal(reset.cached,true);assert.equal(reset.usage.total_tokens,0);assert.equal(reset.metadata.test_generation,'reset');assert.notEqual(reset.id,tables.moa_analyses[0].id);
+ await build('reset').analyzeInput({images:[image]});assert.equal(analyzed,1);
+ await build('reset').analyzeInput({images:[image],caption:'changed'});assert.equal(analyzed,2);
 });
 
 test('old daily-quota backoff is re-evaluated after increasing the allowed limit',async()=>{

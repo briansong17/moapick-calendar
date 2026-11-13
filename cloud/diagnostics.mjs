@@ -1,7 +1,7 @@
 import {AsyncLocalStorage} from 'node:async_hooks';
 import {randomUUID} from 'node:crypto';
 const context=new AsyncLocalStorage();
-const fields=new Set(['status','durationMs','count','blocked','attempt','pending','connected','calendar','refresh','expired','analysisId','requestId','method','operation','table','code','cached','limitType','limit','requested','retryAfterSeconds','tokenLimit','requestLimit','removed','checkedDeletions']);
+const fields=new Set(['status','durationMs','count','blocked','attempt','pending','connected','calendar','refresh','expired','analysisId','requestId','method','operation','table','code','cached','limitType','limit','requested','retryAfterSeconds','tokenLimit','requestLimit','removed','checkedDeletions','inputTokens','outputTokens','totalTokens']);
 export function trace(stage,details={}){
  const store=context.getStore();if(!store)return;
  const safe={};for(const [k,v]of Object.entries(details))if(fields.has(k)&&(typeof v==='boolean'||typeof v==='number'||(typeof v==='string'&&/^[a-zA-Z0-9_.:-]{1,80}$/.test(v))))safe[k]=v;

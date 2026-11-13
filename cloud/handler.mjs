@@ -90,7 +90,7 @@ export function createHandler(env,{db=createSupabase(env),crypto=cipher(env.TOKE
           testUser:!!pref.test_user,collection,
           jobs:jobs.map(j=>({analysisId:j.analysis_id,attempts:j.attempts,nextDue:j.next_due,requestedAt:j.requested_at,failed:!!j.error,failureCode:diagnosticFailureCode(j.error)})),
           exports:exports.map(e=>({analysisId:e.analysis_id,status:e.status,count:e.event_ids?.length??0})),
-          analyses:analyses.map(a=>({analysisId:a.id,status:a.status,createdAt:a.created_at,count:a.result?.events?.length??0,failureCode:diagnosticFailureCode(a.error),provider:a.usage?.failure??null})),verification});
+          analyses:analyses.map(a=>({analysisId:a.id,status:a.status,createdAt:a.created_at,count:a.result?.events?.length??0,failureCode:diagnosticFailureCode(a.error),provider:a.usage?.failure??null,usage:{inputTokens:a.usage?.input_tokens??null,outputTokens:a.usage?.output_tokens??null,totalTokens:a.usage?.total_tokens??null,reused:!!a.usage?.cache_reused}})),verification});
       }
       if(path==='/api/sync/reconcile'&&req.method==='POST'){const input=await readBody(req);return send(200,await sync.reconcile(uid,{begin:input.begin!==false}));}
       if(path==='/api/status'&&req.method==='GET')return send(200,{configured:!!env.OPENAI_API_KEY,model:env.OPENAI_MODEL||'gpt-5.4-mini',count:null,limit:Number(env.DAILY_ANALYSIS_LIMIT||100),busy:false});

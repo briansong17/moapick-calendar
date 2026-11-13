@@ -16,17 +16,33 @@ export function createCollection({db,env,analyze=extract,instagram,onComplete=as
   async function analyzeInput(raw,userId=scope?.uid??null) {
     if(!env.OPENAI_API_KEY)throw new AppError('이미지 분석 연결 준비 중입니다.',503);
     trace('image.validate');const input=validateInput(raw,{maxImages:scope?20:userId?3:20});trace('image.validated',{count:input.images.length});
-    const hash=inputHash(input,model+':'+(userId??'public-instagram')+(scope?':test:'+scope.generation:''));
+    const hash=inputHash(input,model+':'+(userId??'public-instagram'));
+    const legacyHash=scope?inputHash(input,model+':'+userId+':test:'+scope.generation,{deduplicate:false}):null;
     return locked('analysis',async()=>{
-      const [cached]=await db.admin('moa_analyses',{hash:`eq.${hash}`,status:'eq.complete',limit:'1'});
-      if(cached){trace('analysis.cache',{analysisId:cached.id,cached:true});await onComplete(cached);return cached;}
+      const own=userId?{owner_id:`eq.${userId}`}:{owner_id:'is.null',account:`eq.${input.account}`};
+      let [cached]=await db.admin('moa_analyses',{...own,hash:`eq.${hash}`,status:'eq.complete',order:'created_at.desc',limit:'1'});
+      if(!cached&&legacyHash)[cached]=await db.admin('moa_analyses',{...own,hash:`eq.${legacyHash}`,status:'eq.complete',order:'created_at.desc',limit:'1'});
+      if(!cached&&scope&&input.source_url){
+        const candidates=await db.admin('moa_analyses',{...own,'metadata->>source_url':`eq.${input.source_url}`,'metadata->>model':`eq.${model}`,status:'eq.complete',order:'created_at.desc',limit:'20'});
+        // An exact input hash is still required; URL/caption resemblance alone is never a cache hit.
+        cached=candidates.find(c=>c.metadata?.test_generation&&c.hash===inputHash(input,model+':'+userId+':test:'+c.metadata.test_generation,{deduplicate:false}));
+      }
+      if(cached){
+        // Reset history/cursors, not the AI cache. Copy only this member's identical input result.
+        // A fresh record keeps reset history visible without copying reviews or deletion state.
+        if(scope&&cached.metadata?.test_generation!==scope.generation){
+          const usage={input_tokens:0,output_tokens:0,total_tokens:0,cache_reused:true,source_analysis_id:cached.id};
+          [cached]=await db.admin('moa_analyses',{}, {method:'POST',prefer:'return=representation',body:{owner_id:userId,account:null,hash,status:'complete',metadata:{...cached.metadata,test_generation:scope.generation},result:cached.result,usage}});
+        }
+        trace('analysis.cache',{analysisId:cached.id,cached:true});await onComplete(cached);return {...cached,cached:true};
+      }
       const [cooldown]=await db.admin('moa_limits',{bucket:'eq.openai:cooldown',expires_at:`gt.${new Date().toISOString()}`,select:'expires_at',limit:'1'});if(cooldown){throw Object.assign(new AppError('OpenAI 호출 제한 대기 중입니다. 다음 실행 시각 이후 다시 확인합니다.',429),{retryAfterSeconds:Math.max(30,Math.ceil((Date.parse(cooldown.expires_at)-Date.now())/1000))});}
       if(!await db.rpc('moa_take_limit',{p_bucket:'analysis:'+day(),p_limit:Number(env.DAILY_ANALYSIS_LIMIT||100),p_seconds:86400}))throw new AppError('오늘의 분석 한도에 도달했습니다.',429);
       const {images,...metadata}=input;
-      const [row]=await db.admin('moa_analyses',{}, {method:'POST',prefer:'return=representation',body:{owner_id:userId,account:userId?null:input.account,hash,status:'running',metadata:{...metadata,image_count:images.length,model}}});
+      const [row]=await db.admin('moa_analyses',{}, {method:'POST',prefer:'return=representation',body:{owner_id:userId,account:userId?null:input.account,hash,status:'running',metadata:{...metadata,image_count:images.length,unique_image_count:new Set(images).size,model,...(scope?{test_generation:scope.generation}:{})}}});
       let completed;
       try{trace('openai.start',{analysisId:row.id});const {result,usage}=await analyze(input,{apiKey:env.OPENAI_API_KEY,model});
-        trace('openai.complete',{analysisId:row.id,count:result.events.length});await db.admin('moa_analyses',{id:`eq.${row.id}`},{method:'PATCH',body:{status:'complete',result,usage}});completed={...row,status:'complete',result,usage};
+        trace('openai.complete',{analysisId:row.id,count:result.events.length,inputTokens:usage?.input_tokens,outputTokens:usage?.output_tokens,totalTokens:usage?.total_tokens});await db.admin('moa_analyses',{id:`eq.${row.id}`},{method:'PATCH',body:{status:'complete',result,usage}});completed={...row,status:'complete',result,usage};
       }catch(e){trace('openai.failed',{status:e.status??500,...(e.provider??{})});if(e.provider&&e.status===429)await db.admin('moa_limits',{}, {method:'POST',prefer:'resolution=merge-duplicates',body:{bucket:'openai:cooldown',count:1,expires_at:new Date(Date.now()+e.retryAfterSeconds*1000).toISOString()}});await db.admin('moa_analyses',{id:`eq.${row.id}`},{method:'PATCH',body:{status:'failed',error:e instanceof AppError?e.message:'분석 실패',...(e.provider?{usage:{failure:e.provider}}:{})}});throw e;}
       await onComplete(completed);return completed;
     });
