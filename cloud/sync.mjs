@@ -17,7 +17,7 @@ export function createSync({db,env,collection,google=createCloudGoogle({db,env,c
       if(rows.length<200)break;
     }
   }
-  async function one(uid,id){trace('sync.start',{analysisId:id});
+  async function one(uid,id,options={}){trace('sync.start',{analysisId:id});
     return collection.locked(`sync:${uid}:${id}`,async()=>{
       const [job]=await db.admin('moa_sync_jobs',{user_id:`eq.${uid}`,analysis_id:`eq.${id}`});
       if(!job)return {pending:false};
@@ -29,7 +29,7 @@ export function createSync({db,env,collection,google=createCloudGoogle({db,env,c
       try{
         const [review]=await db.admin('moa_reviews',{user_id:`eq.${uid}`,analysis_id:`eq.${id}`});
         const deleted=await db.admin('moa_event_deletions',{user_id:`eq.${uid}`,analysis_id:`eq.${id}`});
-        const result=await google.publish(uid,{...row,reviewed:review?.events??null,source_indices:review?.source_indices,deleted_indices:deleted.map(d=>d.event_index)});
+        const result=await google.publish(uid,{...row,reviewed:review?.events??null,source_indices:review?.source_indices,deleted_indices:deleted.map(d=>d.event_index)},options);
         trace('sync.result',{pending:!!result.waiting,count:result.links?.length??0,blocked:result.blocked?.length??0});if(result.waiting)throw new AppError(result.reason,409);
         await db.admin('moa_sync_jobs',query,{method:'DELETE'});return {...result,pending:false};
       }catch(e){
@@ -44,5 +44,20 @@ export function createSync({db,env,collection,google=createCloudGoogle({db,env,c
     for(const j of jobs)try{await one(j.user_id,j.analysis_id);}catch(e){if(e.status!==409)throw e;}
     return jobs.length;
   }
-  return {enqueue,enqueueAnalysis,enqueueVisible,one,drain};
+  async function reconcile(uid,{begin=true}={}){
+    return collection.locked('reconcile:'+uid,async()=>{
+      trace('reconcile.start');
+      const state=await google.status(uid);
+      if(!state.connected||state.reconnectRequired)return {pending:true,reason:'Google 계정을 연결해 주세요.',retryable:false,more:false};
+      // Existing calendar IDs are reused; uncertain creation is never repeated.
+      if(!state.calendar){if(state.calendarPending)return {pending:true,reason:'캘린더 생성 결과 확인이 필요합니다.',retryable:false,more:false};await google.createCalendar(uid);}
+      if(begin&&await db.rpc('moa_take_limit',{p_bucket:'reconcile:'+uid,p_limit:1,p_seconds:30}))await enqueueVisible(uid);
+      const jobs=await db.admin('moa_sync_jobs',{user_id:`eq.${uid}`,next_due:`lte.${new Date().toISOString()}`,order:'next_due.asc',limit:'2'});
+      let pending=0;for(const j of jobs){try{if((await one(uid,j.analysis_id,{verify:true})).pending)pending++;}catch(e){if(e.status!==409)throw e;pending++;}}
+      const more=(await db.admin('moa_sync_jobs',{user_id:`eq.${uid}`,next_due:`lte.${new Date().toISOString()}`,limit:'1'})).length>0;
+      if((await db.admin('moa_sync_jobs',{user_id:`eq.${uid}`,limit:'1'})).length)pending++;
+      trace('reconcile.complete',{count:jobs.length,pending:!!pending});return {processed:jobs.length,pending:!!pending,more};
+    });
+  }
+  return {reconcile,enqueue,enqueueAnalysis,enqueueVisible,one,drain};
 }

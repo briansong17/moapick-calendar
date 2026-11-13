@@ -1,3 +1,4 @@
+import {upcomingPayload} from './upcoming.mjs';
 import {trace} from './diagnostics.mjs';
 import {OAuth2Client} from 'google-auth-library';
 import {randomBytes} from 'node:crypto';
@@ -5,7 +6,7 @@ import {AppError} from '../lib/extraction.mjs';
 import {googleEvent,GOOGLE_SCOPE} from '../lib/google.mjs';
 import {digest,secureCookie} from './security.mjs';
 import {calendarPayloads} from './calendar-payload.mjs';
-export function createCloudGoogle({db,crypto,env,locked,clientFactory=options=>new OAuth2Client(options)}) {
+export function createCloudGoogle({db,crypto,env,locked,clientFactory=options=>new OAuth2Client(options),now=()=>new Date()}) {
   const redirect=env.PUBLIC_ORIGIN+'/oauth/google/callback';
   const client=tokens=>{const c=clientFactory({clientId:env.GOOGLE_CALENDAR_CLIENT_ID,clientSecret:env.GOOGLE_CALENDAR_CLIENT_SECRET,redirectUri:redirect});c.setCredentials(tokens??{});return c;};
   const read=async uid=>{const [r]=await db.admin('moa_google',{user_id:`eq.${uid}`});return r?crypto.open(r.encrypted,`google:${uid}`):{};};
@@ -53,15 +54,16 @@ export function createCloudGoogle({db,crypto,env,locked,clientFactory=options=>n
       s.pending=true;await save(uid,s);
       try{s.calendar=await call('/calendars',{method:'POST',data:{summary:'모아 · Instagram 일정',timeZone:'Asia/Seoul'}});s.pending=false;return {created:true};}
       catch(e){if([401,403].includes(e.status))s.pending=false;throw e;}}),
-    publish:(uid,row)=>operate(uid,async(s,call)=>{
+    publish:(uid,row,{verify=false}={})=>operate(uid,async(s,call)=>{
       if(!s.calendar)return {waiting:true,reason:'캘린더 연결 필요'};
       const [legacy]=await db.admin('moa_exports',{user_id:`eq.${uid}`,analysis_id:`eq.${row.id}`,source_user_id:'not.is.null',limit:'1'});
       const calendarId=legacy?.calendar_id??s.calendar.id;
-      const {payloads,blocked,reviewed}=calendarPayloads(legacy?.source_user_id??uid,row,env.PUBLIC_ORIGIN);
+      const {payloads:allPayloads,blocked,reviewed}=calendarPayloads(legacy?.source_user_id??uid,row,env.PUBLIC_ORIGIN);
+      const payloads=allPayloads.filter(p=>upcomingPayload(p,now()));
       trace('google.payloads',{analysisId:row.id,count:payloads.length,blocked:blocked.length});const fingerprint=digest(JSON.stringify({payloads,blocked,reviewed}));
       const query={user_id:`eq.${uid}`,analysis_id:`eq.${row.id}`,calendar_id:`eq.${calendarId}`};
       const [prior]=await db.admin('moa_exports',query);
-      if(prior?.status==='complete'&&prior.fingerprint===fingerprint)return {reused:true,links:prior.links,blocked};
+      if(!verify&&prior?.status==='complete'&&prior.fingerprint===fingerprint)return {reused:true,links:prior.links,blocked};
       // Preserve the last known IDs even when a request fails midway.
       const previousIds=prior?.event_ids?.length?prior.event_ids:(prior?row.result.events.map((_,i)=>digest(`moa:${legacy?.source_user_id??uid}:${row.id}:${i}`)):[]);
       await db.admin('moa_exports',{}, {method:'POST',prefer:'resolution=merge-duplicates',body:{user_id:uid,analysis_id:row.id,calendar_id:calendarId,fingerprint,status:'pending',event_ids:[...new Set([...previousIds,...payloads.map(p=>p.id)])]}});
@@ -82,7 +84,7 @@ export function createCloudGoogle({db,crypto,env,locked,clientFactory=options=>n
         links.push(event.htmlLink??'');
       }
       // User excluded a draft while reviewing: remove only that app-created event.
-      const currentIds=payloads.map(p=>p.id);
+      const currentIds=[...new Set([...payloads.map(p=>p.id),...allPayloads.filter(p=>!upcomingPayload(p,now())&&previousIds.includes(p.id)).map(p=>p.id)])];
       if(reviewed||row.deleted_indices?.length)for(const id of previousIds.filter(id=>!currentIds.includes(id))){
         try{await call(base+'/'+id,{method:'DELETE'});}catch(error){if(![404,410].includes(error.status))throw error;}
       }

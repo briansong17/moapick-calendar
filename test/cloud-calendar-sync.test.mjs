@@ -20,7 +20,7 @@ test('초안 재시도는 중복 생성하지 않고 검토 시 같은 이벤트
   if(options?.method==='PATCH'){Object.assign(exportRow,options.body);return;}
   return exportRow?[exportRow]:[];
  }};
- const google=createCloudGoogle({db,crypto:{open:v=>v,seal:v=>v},env:{PUBLIC_ORIGIN:'https://moa.example'},locked:async(_,fn)=>fn(),clientFactory:()=>({setCredentials(){},on(){},async request({url,method='GET',data}){
+ const google=createCloudGoogle({now:()=>new Date('2026-11-13T00:00:00Z'),db,crypto:{open:v=>v,seal:v=>v},env:{PUBLIC_ORIGIN:'https://moa.example'},locked:async(_,fn)=>fn(),clientFactory:()=>({setCredentials(){},on(){},async request({url,method='GET',data}){
   const id=url.split('/').at(-1);calls.push(method);
   if(method==='POST'){assert.ok(!events.has(data.id));events.set(data.id,{...data,htmlLink:'https://calendar.google.com/event'});return {data:events.get(data.id)};}
   if(!events.has(id))throw {response:{status:404}};
@@ -29,6 +29,9 @@ test('초안 재시도는 중복 생성하지 않고 검토 시 같은 이벤트
   return {data:events.get(id)};
  }})});
  await google.publish('a',row);await google.publish('a',row);assert.equal(calls.filter(c=>c==='POST').length,1);
+ // A forced reconciliation must inspect Google even when the stored fingerprint matches.
+ const gets=calls.filter(c=>c==='GET').length;await google.publish('a',row,{verify:true});assert.ok(calls.filter(c=>c==='GET').length>gets);assert.equal(calls.filter(c=>c==='POST').length,1);
+
  await google.publish('a',{...row,reviewed:[{...event,timezone:'Asia/Seoul',end_time:'20:00'}],source_indices:[0]});
  assert.equal(events.size,1);assert.equal([...events.values()][0].summary,'행사');assert.equal([...events.values()][0].start.date,null);
  await google.publish('a',{...row,reviewed:[],source_indices:[]});assert.equal(events.size,0);
@@ -44,7 +47,15 @@ test('이관 일정은 로컬 회원의 원래 캘린더와 이벤트 ID를 사�
  const legacy={calendar_id:'original-calendar',source_user_id:'local-member',event_ids:[],status:'legacy-complete'};
  const state={tokens:{refresh_token:'test'},calendar:{id:'new-calendar'}};let inserted;
  const db={admin:async(table,q,o)=>{if(table==='moa_google')return o?null:[{encrypted:state}];if(o)return null;return [legacy];}};
- const google=createCloudGoogle({db,crypto:{open:v=>v,seal:v=>v},env:{PUBLIC_ORIGIN:'https://moa.example'},locked:async(_,fn)=>fn(),clientFactory:()=>({setCredentials(){},on(){},async request({url,method='GET',data}){assert.ok(url.includes('/original-calendar/events'));if(method==='GET')throw {response:{status:404}};if(method==='POST'){inserted=data;return {data};}return {data:{}};}})});
+ const google=createCloudGoogle({now:()=>new Date('2026-11-13T00:00:00Z'),db,crypto:{open:v=>v,seal:v=>v},env:{PUBLIC_ORIGIN:'https://moa.example'},locked:async(_,fn)=>fn(),clientFactory:()=>({setCredentials(){},on(){},async request({url,method='GET',data}){assert.ok(url.includes('/original-calendar/events'));if(method==='GET')throw {response:{status:404}};if(method==='POST'){inserted=data;return {data};}return {data:{}};}})});
  await google.publish('cloud-member',row);
  assert.equal(inserted.id,calendarPayloads('local-member',row,'https://moa.example').payloads[0].id);
+});
+test('대조 시 지난 일정 신규 등록과 기존 지난 일정 삭제를 하지 않는다',async()=>{
+ let clock=new Date('2026-11-13T00:00:00Z'),saved,state={tokens:{refresh_token:'test'},calendar:{id:'cal'}},calls=[];const events=new Map();
+ const db={admin:async(t,q,o)=>{if(t==='moa_google'){if(o)state=o.body.encrypted;return [{encrypted:state}];}if(q?.source_user_id)return [];if(o?.method==='POST'){saved={...saved,...o.body};return;}if(o?.method==='PATCH'){Object.assign(saved,o.body);return;}return saved?[saved]:[];}};
+ const google=createCloudGoogle({db,now:()=>clock,crypto:{open:x=>x,seal:x=>x},env:{PUBLIC_ORIGIN:'https://moa.example'},locked:async(_,f)=>f(),clientFactory:()=>({setCredentials(){},on(){},async request({url,method='GET',data}){calls.push(method);const id=url.split('/').at(-1);if(method==='POST'){events.set(data.id,data);return {data};}if(!events.has(id))throw {response:{status:404}};if(method==='DELETE'){events.delete(id);return {data:null};}return {data:events.get(id)};}})});
+ await google.publish('a',row);assert.equal(events.size,1);clock=new Date('2026-11-15T00:00:00Z');calls=[];
+ await google.publish('a',row,{verify:true});assert.equal(events.size,1);assert.deepEqual(calls,[]);assert.equal(saved.event_ids.length,1);
+ saved=undefined;calls=[];await google.publish('a',{...row,id:'new-past-analysis'},{verify:true});assert.deepEqual(calls,[]);assert.equal(saved.event_ids.length,0);
 });

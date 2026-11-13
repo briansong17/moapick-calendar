@@ -74,11 +74,12 @@ export function createHandler(env,{db=createSupabase(env),crypto=cipher(env.TOKE
           exports:exports.map(e=>({analysisId:e.analysis_id,status:e.status,count:e.event_ids?.length??0})),
           analyses:analyses.map(a=>({analysisId:a.id,status:a.status,createdAt:a.created_at,count:a.result?.events?.length??0,failureCode:diagnosticFailureCode(a.error)})),verification});
       }
+      if(path==='/api/sync/reconcile'&&req.method==='POST'){const input=await readBody(req);return send(200,await sync.reconcile(uid,{begin:input.begin!==false}));}
       if(path==='/api/status'&&req.method==='GET')return send(200,{configured:!!env.OPENAI_API_KEY,model:env.OPENAI_MODEL||'gpt-5.4-mini',count:null,limit:Number(env.DAILY_ANALYSIS_LIMIT||20),busy:false});
       if(path==='/api/integrations'&&req.method==='GET')return send(200,{google:await google.status(uid),meta:collect.metaStatus(),collector:await collectorStatus()});
       if(path==='/api/google/connect'&&req.method==='POST')return send(200,await google.begin(uid,res));
       if(path==='/oauth/google/callback'&&req.method==='GET'){await google.callback(uid,req,res,url.searchParams);return send(200,'<!doctype html><html lang="ko"><meta charset="utf-8"><title>Google 연결 완료</title><h1>Google 캘린더를 연결했습니다.</h1><a href="/">모아로 돌아가기</a></html>','text/html; charset=utf-8');}
-      if(path==='/api/google/calendar'&&req.method==='POST'){const result=await google.createCalendar(uid);await sync.enqueueVisible(uid);await sync.drain(1);return send(200,result);}
+      if(path==='/api/google/calendar'&&req.method==='POST'){const result=await google.createCalendar(uid);const reconciliation=await sync.reconcile(uid);return send(200,{...result,reconciliation});}
       if(path==='/api/meta/accounts'&&req.method==='POST'){await collect.subscribe(uid,(await readBody(req)).username);await sync.enqueueVisible(uid);return send(200,await collectorStatus());}
       if(['/api/meta/enable','/api/meta/unsubscribe','/api/meta/poll'].includes(path)&&req.method==='POST'){
         const input=await readBody(req),name=accountName(input.username);await requireSubscription(name);
