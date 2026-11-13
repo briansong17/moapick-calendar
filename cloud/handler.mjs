@@ -83,7 +83,7 @@ export function createHandler(env,{db=createSupabase(env),crypto=cipher(env.TOKE
           db.read('moa_exports',{limit:'100'},s.token),
           db.read('moa_analyses',{...historyQuery(pref),...(pref.test_user?{owner_id:`eq.${uid}`}:{ }),status:'neq.superseded',order:'created_at.desc',limit:'30'},s.token)]);
         const collection=await collectionSnapshot(db,uid,pref,s.token);
-        let requests=[],logAvailable=true;try{requests=await db.read('moa_request_logs',{created_at:`gte.${new Date(Date.now()-7*86400000).toISOString()}`,order:'created_at.desc',limit:'100',select:'id,created_at,route,method,status,duration_ms,build,steps'},s.token);}catch{logAvailable=false;}
+        let requests=[],logAvailable=true;try{requests=await db.read('moa_request_logs',{created_at:`gte.${new Date(Date.now()-7*86400000).toISOString()}`,order:'created_at.desc',limit:'100',select:'id,created_at,route,method,status,duration_ms,build,steps,phase'},s.token);}catch{logAvailable=false;}
         const connection=await google.status(uid);
         const verification=url.searchParams.get('verify')==='1'?await google.verifyRecent(uid):null;
         return send(200,{at:new Date().toISOString(),server:{platform:'Vercel',api:'responding',database:'connected',build:env.VERCEL_GIT_COMMIT_SHA?.slice(0,12)??'unknown',durationMs:Date.now()-requestStarted,logAvailable,retentionDays:7},requests,google:{connected:connection.connected,calendar:!!connection.calendar,reconnectRequired:!!connection.reconnectRequired},

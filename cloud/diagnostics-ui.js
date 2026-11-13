@@ -34,11 +34,12 @@ function setupDiagnostics(){renderDiagnostics();document.getElementById('diagnos
 
 function renderServerActivity(s){
  const info=s.server??{},requests=s.requests??[];
+ const collection=document.getElementById('collection-health');collection.replaceChildren();const labels={daily_limit:'일일 분석 한도 대기',openai_billing:'OpenAI 잔액·결제 한도 확인 필요',openai_rate_limit:'OpenAI 호출 속도 제한 대기',busy:'다른 작업 처리 중',auth_required:'연결 인증 확인 필요',rate_limit:'제공자 요청 한도 대기'};for(const [index,a]of s.collection.entries()){const li=document.createElement('li');li.textContent='구독 '+(index+1)+' · 처리 '+(a.processed??0)+'개 · '+(a.failed?(labels[a.failureCode]??'수집 오류: '+a.failureCode):a.phase==='initial'?'최초 수집 중':'최근 게시물 확인')+(a.nextDue?' · 다음 확인 '+new Date(a.nextDue).toLocaleString():'');collection.append(li);}
  document.getElementById('server-health').textContent='Vercel API 응답 정상 · Supabase 연결 정상 · '+new Date(s.at).toLocaleString()+' 확인 · 응답 '+info.durationMs+'ms · 배포 '+info.build;
  document.getElementById('server-log-summary').textContent=info.logAvailable?'최근 7일 중 최신 '+requests.length+'건 · 오류 '+requests.filter(r=>r.status>=400).length+'건 · 본인 요청만 표시':'서버 이력 저장소 조회 실패 — 요청 이력을 확인할 수 없습니다.';
  const list=document.getElementById('server-request-log');list.replaceChildren();
  const changes=new Set(['test.collect.start','test.collect.complete','test.history.reset','analysis.complete','review.save','sync.enqueue','sync.result','google.token_refreshed','reconcile.complete']);
- for(const r of requests){const li=document.createElement('li'),head=document.createElement('strong'),detail=document.createElement('small');head.textContent=new Date(r.created_at).toLocaleString()+' · '+r.method+' '+r.route+' · '+r.status+' · '+r.duration_ms+'ms';detail.textContent=(r.steps??[]).filter(e=>changes.has(e.stage)).map(e=>(diagnosticLabels[e.stage]??e.stage)+(e.pending?' (반영 대기)':'')).join(' → ')||'요청 처리';li.append(head,detail);list.append(li);}
+ for(const r of requests){const li=document.createElement('li'),head=document.createElement('strong'),detail=document.createElement('small');head.textContent=new Date(r.created_at).toLocaleString()+' · '+r.method+' '+r.route+' · '+(r.phase==='running'?'처리 중':r.status+' · '+r.duration_ms+'ms');detail.textContent=(r.steps??[]).filter(e=>changes.has(e.stage)).map(e=>(diagnosticLabels[e.stage]??e.stage)+(e.pending?' (반영 대기)':'')).join(' → ')||'요청 처리';li.append(head,detail);list.append(li);}
 }
 function autoRefreshDiagnostics(){if(!document.hidden&&signedIn&&!document.querySelector('[data-page="diagnostics"]').hidden)refreshDiagnostics();}
 setInterval(autoRefreshDiagnostics,60000);
