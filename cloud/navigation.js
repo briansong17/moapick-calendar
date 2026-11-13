@@ -2,6 +2,7 @@ const viewNames={diagnostics:'진행상황',events:'내 일정',subscriptions:'�
 function openView(view,writeHash=true){
  if(!viewNames[view])view='events';document.querySelectorAll('[data-page]').forEach(p=>p.hidden=p.dataset.page!==view);
  document.querySelectorAll('[data-view]').forEach(b=>{if(b.dataset.view===view)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});
+ if(view==='diagnostics')queueMicrotask(autoRefreshDiagnostics);
  $('page-label').textContent=viewNames[view];if(writeHash&&location.hash!=='#'+view)window.history.replaceState(null,'','#'+view);window.scrollTo({top:0,behavior:'instant'});
 }
 document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>openView(b.dataset.view));

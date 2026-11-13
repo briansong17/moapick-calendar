@@ -1,3 +1,4 @@
+import {saveRequestLog} from './request-logs.mjs';
 import {trace,tracedRequest,traceSnapshot,traceDatabase,diagnosticFailureCode} from './diagnostics.mjs';
 import {eventEntries,deletionIndices} from './event-management.mjs';
 import {AppError,validateReview} from '../lib/extraction.mjs';
@@ -12,16 +13,18 @@ import {createSync} from './sync.mjs';
 import {calendarPayloads} from './calendar-payload.mjs';
 async function readBody(req){let raw='',size=0;if(req.body!==undefined){raw=typeof req.body==='string'?req.body:JSON.stringify(req.body);size=Buffer.byteLength(raw);}else for await(const c of req){size+=c.length;if(size>4*1024*1024)throw new AppError('요청이 너무 큽니다. 배포판은 합계 3MB 이하 이미지를 사용하세요.',413);raw+=c;}if(size>4*1024*1024)throw new AppError('요청이 너무 큽니다.',413);try{return JSON.parse(raw);}catch{throw new AppError('JSON 입력을 확인하세요.');}}
 export function createHandler(env,{db=createSupabase(env),crypto=cipher(env.TOKEN_ENCRYPTION_KEY),collection}={}){
+  const logDb=db;
   db=traceDatabase(db);
   const auth=createAuth({db,crypto,origin:env.PUBLIC_ORIGIN,supabaseUrl:env.SUPABASE_URL});
   let sync;
   const collect=collection??createCollection({db,env,onComplete:row=>sync.enqueueAnalysis(row)}),google=createCloudGoogle({db,crypto,env,locked:collect.locked});
   sync=createSync({db,env,collection:collect,google});
   return async(req,res)=>tracedRequest(async()=>{
-    const send=(status,value,type='application/json; charset=utf-8')=>{trace('request.complete',{status});const diagnostic=traceSnapshot();if(type.startsWith('application/json')&&value&&!Array.isArray(value))value={...value,diagnostics:diagnostic};res.setHeader('X-Moa-Request-Id',diagnostic.requestId);res.writeHead(status,{...securityHeaders,'Content-Type':type});res.end(type.startsWith('application/json')?JSON.stringify(value):value);};
+    let logUid=null,logPath='other';const requestStarted=Date.now();
+    const send=async(status,value,type='application/json; charset=utf-8')=>{trace('request.complete',{status});const diagnostic=traceSnapshot();const persisted=await saveRequestLog(logDb,{uid:logUid,path:logPath,method:req.method,status,started:requestStarted,snapshot:diagnostic,build:env.VERCEL_GIT_COMMIT_SHA});if(!persisted)diagnostic.logUnavailable=true;if(type.startsWith('application/json')&&value&&!Array.isArray(value))value={...value,diagnostics:diagnostic};res.setHeader('X-Moa-Request-Id',diagnostic.requestId);res.writeHead(status,{...securityHeaders,'Content-Type':type});res.end(type.startsWith('application/json')?JSON.stringify(value):value);};
     try{
       const url=new URL(req.url,env.PUBLIC_ORIGIN),path=url.searchParams.has('route')?'/'+url.searchParams.get('route'):url.pathname;
-      trace('request.received',{method:req.method});
+      logPath=path;trace('request.received',{method:req.method});
       const callback=req.method==='GET'&&['/auth/callback','/oauth/google/callback'].includes(path);
       // Schedulers use an explicit secret and do not depend on browser cookies.
       if(path==='/api/cron'&&req.method==='GET'){
@@ -41,7 +44,7 @@ export function createHandler(env,{db=createSupabase(env),crypto=cipher(env.TOKE
         return send(200,'<!doctype html><html lang="ko"><meta charset="utf-8"><title>로그인 완료</title><h1>로그인했습니다.</h1><a href="/">모아로 돌아가기</a></html>','text/html; charset=utf-8');
       }
       if(path==='/api/auth/logout'&&req.method==='POST'){await auth.logout(req,res);return send(200,{ok:true});}
-      trace('session.check');const s=await auth.session(req);trace('session.checked',{connected:!!s});
+      trace('session.check');const s=await auth.session(req);trace('session.checked',{connected:!!s});logUid=s?.user.id??null;
       if(path==='/api/auth/me'&&req.method==='GET')return send(200,{user:s?.user??null,setup:false});
       if(!s)throw new AppError('Google 계정으로 로그인해 주세요.',401);
       const uid=s.user.id;
@@ -66,9 +69,10 @@ export function createHandler(env,{db=createSupabase(env),crypto=cipher(env.TOKE
           db.read('moa_sync_jobs',{order:'requested_at.desc',limit:'30'},s.token),
           db.read('moa_exports',{limit:'100'},s.token),
           db.read('moa_analyses',{status:'neq.superseded',order:'created_at.desc',limit:'30'},s.token),db.read('moa_accounts',{},s.token)]);
+        let requests=[],logAvailable=true;try{requests=await db.read('moa_request_logs',{created_at:`gte.${new Date(Date.now()-7*86400000).toISOString()}`,order:'created_at.desc',limit:'100',select:'id,created_at,route,method,status,duration_ms,build,steps'},s.token);}catch{logAvailable=false;}
         const connection=await google.status(uid);
         const verification=url.searchParams.get('verify')==='1'?await google.verifyRecent(uid):null;
-        return send(200,{at:new Date().toISOString(),google:{connected:connection.connected,calendar:!!connection.calendar,reconnectRequired:!!connection.reconnectRequired},
+        return send(200,{at:new Date().toISOString(),server:{platform:'Vercel',api:'responding',database:'connected',build:env.VERCEL_GIT_COMMIT_SHA?.slice(0,12)??'unknown',durationMs:Date.now()-requestStarted,logAvailable,retentionDays:7},requests,google:{connected:connection.connected,calendar:!!connection.calendar,reconnectRequired:!!connection.reconnectRequired},
           collection:accounts.map((a,index)=>({index,phase:a.phase,lastChecked:a.last_checked,nextDue:a.next_due,processed:a.processed,failed:!!a.error,failureCode:diagnosticFailureCode(a.error)})),
           jobs:jobs.map(j=>({analysisId:j.analysis_id,attempts:j.attempts,nextDue:j.next_due,requestedAt:j.requested_at,failed:!!j.error,failureCode:diagnosticFailureCode(j.error)})),
           exports:exports.map(e=>({analysisId:e.analysis_id,status:e.status,count:e.event_ids?.length??0})),

@@ -7,7 +7,7 @@ import {cipher,digest} from '../cloud/security.mjs';
 import {createSupabase} from '../cloud/supabase.mjs';
 test('배포 API는 서버 검증한 회원만 사용하며 RLS에 사용자 토큰 전달',async()=>{
  const crypto=cipher(randomBytes(32).toString('base64')),sessionId='a'.repeat(64),hash=digest(sessionId),uid='11111111-1111-4111-8111-111111111111';let readTokens=[],writes=0;
- const db={admin:async(name,q,options)=>{if(options)writes++;if(name==='moa_sessions')return [{user_id:uid,created_at:new Date().toISOString(),encrypted:crypto.seal({access_token:'verified-user-token',expires_at:Date.now()/1000+3600},'session:'+hash)}];return [];},
+ const db={admin:async(name,q,options)=>{if(options&&name!=='moa_request_logs')writes++;if(name==='moa_sessions')return [{user_id:uid,created_at:new Date().toISOString(),encrypted:crypto.seal({access_token:'verified-user-token',expires_at:Date.now()/1000+3600},'session:'+hash)}];return [];},
   auth:async()=>({id:uid,email:'fixture@example.test',email_confirmed_at:new Date().toISOString()}),read:async(name,q,token)=>{readTokens.push(token);return [];},rpc:async()=>true};
  const handler=createHandler({PUBLIC_ORIGIN:'https://moa.example',SUPABASE_URL:'https://test.supabase.co'},{db,crypto,collection:{locked:async(n,fn)=>fn(),metaStatus:()=>({configured:false})}});
  const req=async(path,{cookie='',body,origin='https://moa.example'}={})=>{
