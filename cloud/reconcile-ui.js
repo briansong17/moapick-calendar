@@ -7,11 +7,11 @@ async function reconcileCalendar(begin=true){
  let again=false;
  try{
   const r=await api('/api/sync/reconcile',{begin});
-  status.textContent=r.reason??(r.more?'일정 추가·삭제를 계속 동기화하고 있습니다…':r.pending?'일부 일정이 반영 대기 중입니다. 자동으로 다시 확인합니다.':'일정 추가·삭제 동기화 확인을 마쳤습니다. 아이폰 캘린더 표시는 기기 동기화 후 갱신됩니다.');
+  status.textContent=r.reason??(r.more?'Google 일정 추가·삭제를 계속 확인하고 있습니다…':r.pending?'일부 일정이 Google 반영 대기 중입니다. 자동으로 다시 확인합니다.':'Google 서버의 일정 추가·삭제 반영을 확인했습니다. 휴대폰 앱의 수신 완료 여부는 별도입니다.');
   again=r.more||(r.pending&&r.retryable!==false);
   if(!r.more)await Promise.all([loadManagedEvents(),history(),connections()]);
   if(again)reconciliationTimer=setTimeout(()=>reconcileCalendar(!r.more),r.more?1000:60000);
- }catch(e){status.textContent='동기화 확인을 완료하지 못했습니다. 화면 복귀 시 다시 확인합니다. 진행상황에서 로그를 확인하세요.';diagnosticLog('reconcile.client_failed',{code:diagnosticCategory(e.message)});reconciliationTimer=setTimeout(()=>reconcileCalendar(true),60000);}
+ }catch(e){status.textContent='Google 반영 상태를 확인하지 못했습니다. 온라인으로 이 화면을 열어두면 약 1분 뒤 재시도하며, 다시 접속할 때도 확인합니다. 진행상황에서 로그를 확인하세요.';diagnosticLog('reconcile.client_failed',{code:diagnosticCategory(e.message)});reconciliationTimer=setTimeout(()=>reconcileCalendar(true),60000);}
  finally{reconciliationBusy=false;if(reconciliationRequested){reconciliationRequested=false;clearTimeout(reconciliationTimer);reconciliationTimer=setTimeout(()=>reconcileCalendar(true),30000);}}
 }
 function requestReconciliation(){reconciliationLast=0;void reconcileCalendar(true);}

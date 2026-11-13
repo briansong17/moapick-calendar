@@ -6,7 +6,8 @@ import {AppError} from '../lib/extraction.mjs';
 import {googleEvent,GOOGLE_SCOPE} from '../lib/google.mjs';
 import {digest,secureCookie} from './security.mjs';
 import {calendarPayloads} from './calendar-payload.mjs';
-export function createCloudGoogle({db,crypto,env,locked,clientFactory=options=>new OAuth2Client(options),now=()=>new Date()}) {
+import {sameManagedEvent,verifyGoogleEvent} from './google-event-verification.mjs';
+export function createCloudGoogle({db,crypto,env,locked,clientFactory=options=>new OAuth2Client(options),now=()=>new Date(),verificationWait}) {
   const redirect=env.PUBLIC_ORIGIN+'/oauth/google/callback';
   const client=tokens=>{const c=clientFactory({clientId:env.GOOGLE_CALENDAR_CLIENT_ID,clientSecret:env.GOOGLE_CALENDAR_CLIENT_SECRET,redirectUri:redirect});c.setCredentials(tokens??{});return c;};
   const read=async uid=>{const [r]=await db.admin('moa_google',{user_id:`eq.${uid}`});return r?crypto.open(r.encrypted,`google:${uid}`):{};};
@@ -25,8 +26,13 @@ export function createCloudGoogle({db,crypto,env,locked,clientFactory=options=>n
     verifyRecent:uid=>operate(uid,async(s,call)=>{
       if(!s.calendar)return {connected:false,checked:0};
       await call('/calendars/'+encodeURIComponent(s.calendar.id));
-      const rows=await db.admin('moa_exports',{user_id:`eq.${uid}`,limit:'100'}),targets=rows.flatMap(r=>(r.event_ids??[]).map(id=>({id,calendar:r.calendar_id,analysisId:r.analysis_id}))).slice(-10),results=[];
-      for(const t of targets){try{const e=await call('/calendars/'+encodeURIComponent(t.calendar)+'/events/'+t.id);results.push({analysisId:t.analysisId,status:e.status==='cancelled'?'cancelled':'present'});}catch(e){results.push({analysisId:t.analysisId,status:'failed',httpStatus:e.status??502});}}
+      const rows=await db.admin('moa_exports',{user_id:`eq.${uid}`,limit:'100'});
+      const deleted=await db.admin('moa_event_deletions',{user_id:`eq.${uid}`,order:'created_at.desc',limit:'10'});
+      const removals=deleted.flatMap(d=>rows.filter(r=>r.analysis_id===d.analysis_id).map(r=>({id:digest(`moa:${r.source_user_id??uid}:${d.analysis_id}:${d.event_index}`),calendar:r.calendar_id,analysisId:d.analysis_id,deletion:true})));
+      const removedKeys=new Set(removals.map(t=>t.calendar+':'+t.id));
+      const active=rows.flatMap(r=>(r.event_ids??[]).map(id=>({id,calendar:r.calendar_id,analysisId:r.analysis_id}))).filter(t=>!removedKeys.has(t.calendar+':'+t.id));
+      const seen=new Set(),targets=[...active.slice(-5),...removals,...active].filter(t=>{const key=t.calendar+':'+t.id;if(seen.has(key))return false;seen.add(key);return true;}).slice(0,10),results=[];
+      for(const t of targets){try{const e=await call('/calendars/'+encodeURIComponent(t.calendar)+'/events/'+t.id);results.push({analysisId:t.analysisId,kind:t.deletion?'deletion':'event',status:e.status==='cancelled'?(t.deletion?'deleted':'cancelled'):'present'});}catch(e){results.push({analysisId:t.analysisId,kind:t.deletion?'deletion':'event',status:t.deletion&&[404,410].includes(e.status)?'deleted':'failed',...(!t.deletion||![404,410].includes(e.status)?{httpStatus:e.status??502}:{})});}}
       return {connected:true,checked:results.length,limited:true,results};
     }),
     async status(uid){const s=await read(uid);return {configured:!!env.GOOGLE_CALENDAR_CLIENT_ID,connected:!!s.tokens?.refresh_token,calendar:s.calendar?.summary??null,calendarPending:!!s.pending,reconnectRequired:!!s.reconnectRequired};},
@@ -52,7 +58,7 @@ export function createCloudGoogle({db,crypto,env,locked,clientFactory=options=>n
     },
     createCalendar:uid=>operate(uid,async(s,call)=>{if(s.calendar)return {created:false};if(s.pending)throw new AppError('이전 생성 결과를 Google에서 확인해야 합니다.',409);if(!s.tokens?.refresh_token)throw new AppError('Google 계정을 먼저 연결하세요.');
       s.pending=true;await save(uid,s);
-      try{s.calendar=await call('/calendars',{method:'POST',data:{summary:'모아 · Instagram 일정',timeZone:'Asia/Seoul'}});s.pending=false;return {created:true};}
+      try{s.calendar=await call('/calendars',{method:'POST',data:{summary:'모아픽 · Instagram 일정',timeZone:'Asia/Seoul'}});s.pending=false;return {created:true};}
       catch(e){if([401,403].includes(e.status))s.pending=false;throw e;}}),
     publish:(uid,row,{verify=false}={})=>operate(uid,async(s,call)=>{
       if(!s.calendar)return {waiting:true,reason:'캘린더 연결 필요'};
@@ -72,20 +78,25 @@ export function createCloudGoogle({db,crypto,env,locked,clientFactory=options=>n
       // Preserve the last known IDs even when a request fails midway.
       const previousIds=Array.isArray(prior?.event_ids)?prior.event_ids:(prior?row.result.events.map((_,i)=>digest(`moa:${legacy?.source_user_id??uid}:${row.id}:${i}`)):[]);
       await db.admin('moa_exports',{}, {method:'POST',prefer:'resolution=merge-duplicates',body:{user_id:uid,analysis_id:row.id,calendar_id:calendarId,fingerprint,status:'pending',event_ids:[...new Set([...previousIds,...payloads.map(p=>p.id),...removedIds])]}});
-      const base='/calendars/'+encodeURIComponent(calendarId)+'/events',links=[];
+      const base='/calendars/'+encodeURIComponent(calendarId)+'/events',links=[];let written=0,verified=0;
       for(const payload of payloads){
         let existing;try{existing=await call(base+'/'+payload.id);}catch(error){if(error.status!==404)throw error;}
         if(existing?.status==='cancelled')continue; // Respect deletion in Google Calendar.
         let event;
-        if(existing) {
+        if(existing&&sameManagedEvent(existing,payload))event=existing;
+        else if(existing) {
           const {id,...patch}=payload;
+          patch.extendedProperties={...existing.extendedProperties,...patch.extendedProperties,private:{...existing.extendedProperties?.private,...patch.extendedProperties?.private}};
           if(existing.start?.date && patch.start.dateTime){patch.start.date=null;patch.end.date=null;}
           if(existing.start?.dateTime && patch.start.date){patch.start.dateTime=null;patch.start.timeZone=null;patch.end.dateTime=null;patch.end.timeZone=null;}
           event=await call(base+'/'+payload.id,{method:'PATCH',data:patch});
+          written++;
         } else {
-          try{event=await call(base,{method:'POST',data:payload});}
+          try{event=await call(base,{method:'POST',data:payload});written++;}
           catch(error){if(error.status!==409)throw error;event=await call(base+'/'+payload.id);}
         }
+        if(event!==existing)event=await verifyGoogleEvent(call,base+'/'+payload.id,{expected:payload,wait:verificationWait});
+        verified++;trace('google.write_verified',{operation:'upsert',count:1});
         links.push(event.htmlLink??'');
       }
       // User excluded a draft while reviewing: remove only that app-created event.
@@ -97,10 +108,11 @@ export function createCloudGoogle({db,crypto,env,locked,clientFactory=options=>n
         let existing;try{existing=await call(base+'/'+id);}catch(error){if([404,410].includes(error.status))continue;throw error;}
         if(existing?.status==='cancelled')continue;
         try{await call(base+'/'+id,{method:'DELETE'});removed++;}catch(error){if(![404,410].includes(error.status))throw error;}
+        await verifyGoogleEvent(call,base+'/'+id,{deleted:true,wait:verificationWait});trace('google.write_verified',{operation:'delete',count:1});
       }
       trace('google.deletions',{count:toRemove.length,removed});
       await db.admin('moa_exports',query,{method:'PATCH',body:{status:'complete',links,event_ids:currentIds}});
-      return {reused:false,links,blocked,reviewed,removed,checkedDeletions:toRemove.length};
+      return {reused:false,links,blocked,reviewed,removed,checkedDeletions:toRemove.length,written,verified,googleVerified:true};
     })
   };
 }

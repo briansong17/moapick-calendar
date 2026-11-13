@@ -47,7 +47,7 @@ test('이관 일정은 로컬 회원의 원래 캘린더와 이벤트 ID를 사�
  const legacy={calendar_id:'original-calendar',source_user_id:'local-member',event_ids:[],status:'legacy-complete'};
  const state={tokens:{refresh_token:'test'},calendar:{id:'new-calendar'}};let inserted;
  const db={admin:async(table,q,o)=>{if(table==='moa_google')return o?null:[{encrypted:state}];if(o)return null;return [legacy];}};
- const google=createCloudGoogle({now:()=>new Date('2026-11-13T00:00:00Z'),db,crypto:{open:v=>v,seal:v=>v},env:{PUBLIC_ORIGIN:'https://moa.example'},locked:async(_,fn)=>fn(),clientFactory:()=>({setCredentials(){},on(){},async request({url,method='GET',data}){assert.ok(url.includes('/original-calendar/events'));if(method==='GET')throw {response:{status:404}};if(method==='POST'){inserted=data;return {data};}return {data:{}};}})});
+ const google=createCloudGoogle({now:()=>new Date('2026-11-13T00:00:00Z'),db,crypto:{open:v=>v,seal:v=>v},env:{PUBLIC_ORIGIN:'https://moa.example'},locked:async(_,fn)=>fn(),clientFactory:()=>({setCredentials(){},on(){},async request({url,method='GET',data}){assert.ok(url.includes('/original-calendar/events'));if(method==='GET'){if(inserted)return {data:inserted};throw {response:{status:404}};}if(method==='POST'){inserted=data;return {data};}return {data:{}};}})});
  await google.publish('cloud-member',row);
  assert.equal(inserted.id,calendarPayloads('local-member',row,'https://moa.example').payloads[0].id);
 });

@@ -42,15 +42,16 @@ export function createSync({db,env,collection,google=createCloudGoogle({db,env,c
         trace('sync.result',{pending:!!result.waiting,count:result.links?.length??0,blocked:result.blocked?.length??0});if(result.waiting)throw new AppError(result.reason,409);
         await db.admin('moa_sync_jobs',query,{method:'DELETE'});return {...result,pending:false};
       }catch(e){
-        trace('sync.retry',{status:e.status??500,attempt:job.attempts+1});const error=e instanceof AppError?e.message:'캘린더 동기화 실패. 자동 재시도합니다.';
-        await db.admin('moa_sync_jobs',query,{method:'PATCH',body:{error,attempts:job.attempts+1,next_due:new Date(Date.now()+15*60000).toISOString()}});
+        const attempts=(job.attempts??0)+1,retryAfterSeconds=[401,403].includes(e.status)?900:Math.min(900,30*2**Math.min(attempts-1,5));
+        trace('sync.retry',{status:e.status??500,attempt:attempts,retryAfterSeconds});const error=e instanceof AppError?e.message:'캘린더 동기화 실패. 자동 재시도합니다.';
+        await db.admin('moa_sync_jobs',query,{method:'PATCH',body:{error,attempts,next_due:new Date(Date.now()+retryAfterSeconds*1000).toISOString()}});
         return {pending:true,error};
       }
     });
   }
   async function drain(limit=2){
     const jobs=await db.admin('moa_sync_jobs',{next_due:`lte.${new Date().toISOString()}`,order:'next_due.asc',limit:String(limit)});
-    for(const j of jobs)try{await one(j.user_id,j.analysis_id);}catch(e){if(e.status!==409)throw e;}
+    for(const j of jobs)try{await one(j.user_id,j.analysis_id,{verify:true});}catch(e){if(e.status!==409)throw e;}
     return jobs.length;
   }
   async function reconcile(uid,{begin=true}={}){

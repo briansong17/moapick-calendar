@@ -46,6 +46,7 @@ async function deleteManaged(keys){
  try{await loadManagedEvents();await history();if(current&&document.querySelector('[data-page=review]')?.hidden===false)render(await api('/api/analyses/'+current.id));}catch{failed++;}
  $('event-status').textContent=deleted+'개 삭제'+(pending?' · '+pending+'개는 Google 반영 대기(자동 재시도)':'')+(failed?' · 일부 처리가 실패했습니다. 목록을 새로고침한 뒤 다시 시도해 주세요.':'');
  eventBusy=false;document.querySelectorAll('#event-management button,#event-management input').forEach(e=>e.disabled=false);
+ if(deleted)requestReconciliation();
 }
 $('events-select-all').onchange=()=>document.querySelectorAll('[data-event-key]').forEach(e=>e.checked=$('events-select-all').checked);
 $('events-delete-selected').onclick=()=>deleteManaged([...document.querySelectorAll('[data-event-key]:checked')].map(e=>e.dataset.eventKey));
