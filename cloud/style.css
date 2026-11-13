@@ -41,4 +41,4 @@ body:not(:has(.sidebar)) main{max-width:820px;margin:0 auto;padding:50px 28px}bo
 }
 .activity-notice{margin:12px 24px;padding:12px 16px;border-left:3px solid #cf5b36;background:#f6f0e5;font-size:14px;white-space:pre-wrap;overflow-wrap:anywhere}
 .diagnostic-log{padding:0;list-style:none}.diagnostic-log li{padding:12px 0;border-bottom:1px solid var(--line)}.diagnostic-log strong{display:block;font-size:14px}.diagnostic-log small{display:block;font-size:12px;color:#626e59;overflow-wrap:anywhere}#diagnostic-server{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px}#diagnostic-file{overflow-wrap:anywhere}
-@media(max-width:650px){.sidebar nav{grid-template-columns:repeat(6,minmax(66px,1fr));overflow-x:auto;padding-bottom:3px}.activity-notice{margin:12px 16px}.diagnostic-log strong{font-size:14px}}
+@media(max-width:650px){.sidebar nav{grid-template-columns:repeat(7,minmax(78px,1fr));overflow-x:auto;padding-bottom:3px}.activity-notice{margin:12px 16px}.diagnostic-log strong{font-size:14px}}
