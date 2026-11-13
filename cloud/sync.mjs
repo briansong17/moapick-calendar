@@ -12,10 +12,17 @@ export function createSync({db,env,collection,google=createCloudGoogle({db,env,c
   async function enqueueVisible(uid){
     const pref=await preferences(db,uid);
     const subs=await db.admin('moa_subscriptions',{user_id:`eq.${uid}`,enabled:'eq.true'});
+    const enqueued=new Set();const enqueueOnce=async id=>{if(!enqueued.has(id)){await enqueue(uid,id);enqueued.add(id);}};
     const queries=[{owner_id:`eq.${uid}`},...(pref.test_user?[]:subs.map(s=>({account:`eq.${s.username}`})))];
     for(const query of queries)for(let offset=0;;offset+=200){
       const rows=await db.admin('moa_analyses',{...query,...historyQuery(pref),status:'eq.complete',select:'id',order:'created_at.asc,id.asc',limit:'200',offset:String(offset)});
-      for(const row of rows)await enqueue(uid,row.id);
+      for(const row of rows)await enqueueOnce(row.id);
+      if(rows.length<200)break;
+    }
+    // History reset, test mode and unsubscribing must not hide an outstanding calendar deletion.
+    for(const table of ['moa_exports','moa_event_deletions'])for(let offset=0;;offset+=200){
+      const rows=await db.admin(table,{user_id:`eq.${uid}`,select:'analysis_id',order:table==='moa_exports'?'analysis_id.asc,calendar_id.asc':'analysis_id.asc,event_index.asc',limit:'200',offset:String(offset)});
+      for(const row of rows)await enqueueOnce(row.analysis_id);
       if(rows.length<200)break;
     }
   }

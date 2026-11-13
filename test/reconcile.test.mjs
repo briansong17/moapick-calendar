@@ -10,7 +10,7 @@ test('미래·진행 중 일정만 등록하며 한국 날짜 및 종료 시각 
 test('접속 대조는 본인 작업만 즉시 실행하고 Google 실제 확인을 요청한다',async()=>{
  let job={user_id:'owner',analysis_id:'analysis',requested_at:'stamp',attempts:0},created=0,published;
  const db={rpc:async()=>true,admin:async(table,q,o)=>{
-  if(table==='moa_preferences')return [];if(table==='moa_subscriptions')return [];
+  if(table==='moa_preferences')return [];if(table==='moa_exports')return [];if(table==='moa_subscriptions')return [];
   if(table==='moa_analyses')return [{id:'analysis',owner_id:'owner',status:'complete'}];
   if(table==='moa_reviews')return [];if(table==='moa_event_deletions')return [{event_index:1}];
   if(table==='moa_sync_jobs'){if(o?.method==='POST'){job={...o.body,attempts:0};return;}if(o?.method==='DELETE'){job=null;return;}assert.equal(q.user_id,'eq.owner');return job?[job]:[];}throw Error(table);
@@ -24,4 +24,20 @@ test('캘린더 생성 결과 불명확 또는 연결 미완료 시 중복 생�
  const sync=createSync({db:{},env:{},collection:{locked:async(_,fn)=>fn()},google:{status:async()=>state,createCalendar:async()=>assert.fail('must not create')}});
  const r=await sync.reconcile('owner');assert.equal(r.pending,true);assert.equal(r.retryable,false);
  }
+});
+
+test('테스트 모드·기록 초기화·구독 해제 후에도 본인의 삭제·내보내기 기록은 대조 대상이다',async()=>{
+ const enqueued=[],queries=[];
+ const db={admin:async(t,q,o)=>{
+  queries.push({t,q});
+  if(t==='moa_preferences')return [{test_user:true,history_reset_at:'2026-11-13T00:00:00Z'}];
+  if(t==='moa_subscriptions')return [];
+  if(t==='moa_analyses'){assert.equal(q.created_at,'gte.2026-11-13T00:00:00Z');return [];}
+  if(t==='moa_exports'){assert.equal(q.user_id,'eq.owner');return [{analysis_id:'archived-export'}];}
+  if(t==='moa_event_deletions'){assert.equal(q.user_id,'eq.owner');return [{analysis_id:'old-deletion'},{analysis_id:'archived-export'}];}
+  if(t==='moa_sync_jobs'&&o?.method==='POST'){enqueued.push(o.body);return [];}
+  throw Error(t);
+ }};
+ const sync=createSync({db,env:{},collection:{locked:async(_,f)=>f()},google:{}});await sync.enqueueVisible('owner');
+ assert.deepEqual(enqueued.map(r=>r.analysis_id).sort(),['archived-export','old-deletion']);assert.ok(enqueued.every(r=>r.user_id==='owner'));
 });

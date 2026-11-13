@@ -59,3 +59,32 @@ test('대조 시 지난 일정 신규 등록과 기존 지난 일정 삭제를 �
  await google.publish('a',row,{verify:true});assert.equal(events.size,1);assert.deepEqual(calls,[]);assert.equal(saved.event_ids.length,1);
  saved=undefined;calls=[];await google.publish('a',{...row,id:'new-past-analysis'},{verify:true});assert.deepEqual(calls,[]);assert.equal(saved.event_ids.length,0);
 });
+
+test('웹 삭제 기록은 삭제 완료·추적 ID가 비어진 뒤에도 복원된 Google 일정을 다시 삭제한다',async()=>{
+ for(const mode of ['selected','review-excluded']){
+  let saved,state={tokens:{refresh_token:'test'},calendar:{id:'cal'}},failDelete=false;
+  const payload=calendarPayloads('owner',row,'https://moa.example').payloads[0],events=new Map([['unrelated',{id:'unrelated'}]]),calls=[];
+  const db={admin:async(t,q,o)=>{
+   if(t==='moa_google'){if(o)state=o.body.encrypted;return [{encrypted:state}];}
+   if(q?.source_user_id)return [];
+   if(o?.method==='POST'){saved={...saved,...o.body};return;}
+   if(o?.method==='PATCH'){Object.assign(saved,o.body);return;}
+   return saved?[saved]:[];
+  }};
+  const google=createCloudGoogle({now:()=>new Date('2026-11-13T00:00:00Z'),db,crypto:{open:x=>x,seal:x=>x},env:{PUBLIC_ORIGIN:'https://moa.example'},locked:async(_,fn)=>fn(),clientFactory:()=>({setCredentials(){},on(){},async request({url,method='GET',data}){
+   const id=url.split('/').at(-1);calls.push({id,method});
+   if(method==='POST'){events.set(data.id,data);return {data};}
+   if(!events.has(id))throw {response:{status:404}};
+   if(method==='DELETE'){if(failDelete)throw {response:{status:503}};events.delete(id);return {data:null};}
+   return {data:events.get(id)};
+  }})});
+  await google.publish('owner',row);
+  const deleted=mode==='selected'?{...row,deleted_indices:[0]}:{...row,reviewed:[],source_indices:[]};
+  failDelete=true;await assert.rejects(google.publish('owner',deleted));assert.equal(saved.status,'pending');assert.ok(events.has(payload.id));
+  failDelete=false;await google.publish('owner',deleted,{verify:true});assert.equal(saved.status,'complete');assert.deepEqual(saved.event_ids,[]);assert.ok(!events.has(payload.id));
+  // Model a delayed/restored Calendar event after the first successful deletion.
+  events.set(payload.id,payload);calls.length=0;
+  const result=await google.publish('owner',deleted,{verify:true});assert.equal(result.removed,1);assert.ok(!events.has(payload.id));assert.ok(events.has('unrelated'));assert.ok(calls.some(c=>c.method==='GET'&&c.id===payload.id));
+  calls.length=0;await google.publish('owner',deleted,{verify:true});assert.equal(calls.filter(c=>c.method==='DELETE').length,0);
+ }
+});

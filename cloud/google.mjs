@@ -58,15 +58,20 @@ export function createCloudGoogle({db,crypto,env,locked,clientFactory=options=>n
       if(!s.calendar)return {waiting:true,reason:'캘린더 연결 필요'};
       const [legacy]=await db.admin('moa_exports',{user_id:`eq.${uid}`,analysis_id:`eq.${row.id}`,source_user_id:'not.is.null',limit:'1'});
       const calendarId=legacy?.calendar_id??s.calendar.id;
-      const {payloads:allPayloads,blocked,reviewed}=calendarPayloads(legacy?.source_user_id??uid,row,env.PUBLIC_ORIGIN);
+      const sourceUid=legacy?.source_user_id??uid;
+      const {payloads:allPayloads,blocked,reviewed}=calendarPayloads(sourceUid,row,env.PUBLIC_ORIGIN);
+      const keptIndices=new Set(reviewed?(row.source_indices??row.reviewed.map((_,i)=>i)):row.result.events.map((_,i)=>i));
+      const deletedIndices=new Set(row.deleted_indices??[]);
+      // Tombstones remain authoritative after event_ids has been emptied by a successful delete.
+      const removedIds=row.result.events.flatMap((_,i)=>deletedIndices.has(i)||(reviewed&&!keptIndices.has(i))?[digest(`moa:${sourceUid}:${row.id}:${i}`)]:[]);
       const payloads=allPayloads.filter(p=>upcomingPayload(p,now()));
-      trace('google.payloads',{analysisId:row.id,count:payloads.length,blocked:blocked.length});const fingerprint=digest(JSON.stringify({payloads,blocked,reviewed}));
+      trace('google.payloads',{analysisId:row.id,count:payloads.length,blocked:blocked.length});const fingerprint=digest(JSON.stringify({payloads,blocked,reviewed,removedIds}));
       const query={user_id:`eq.${uid}`,analysis_id:`eq.${row.id}`,calendar_id:`eq.${calendarId}`};
       const [prior]=await db.admin('moa_exports',query);
       if(!verify&&prior?.status==='complete'&&prior.fingerprint===fingerprint)return {reused:true,links:prior.links,blocked};
       // Preserve the last known IDs even when a request fails midway.
       const previousIds=Array.isArray(prior?.event_ids)?prior.event_ids:(prior?row.result.events.map((_,i)=>digest(`moa:${legacy?.source_user_id??uid}:${row.id}:${i}`)):[]);
-      await db.admin('moa_exports',{}, {method:'POST',prefer:'resolution=merge-duplicates',body:{user_id:uid,analysis_id:row.id,calendar_id:calendarId,fingerprint,status:'pending',event_ids:[...new Set([...previousIds,...payloads.map(p=>p.id)])]}});
+      await db.admin('moa_exports',{}, {method:'POST',prefer:'resolution=merge-duplicates',body:{user_id:uid,analysis_id:row.id,calendar_id:calendarId,fingerprint,status:'pending',event_ids:[...new Set([...previousIds,...payloads.map(p=>p.id),...removedIds])]}});
       const base='/calendars/'+encodeURIComponent(calendarId)+'/events',links=[];
       for(const payload of payloads){
         let existing;try{existing=await call(base+'/'+payload.id);}catch(error){if(error.status!==404)throw error;}
@@ -85,11 +90,17 @@ export function createCloudGoogle({db,crypto,env,locked,clientFactory=options=>n
       }
       // User excluded a draft while reviewing: remove only that app-created event.
       const currentIds=[...new Set([...payloads.map(p=>p.id),...allPayloads.filter(p=>!upcomingPayload(p,now())&&previousIds.includes(p.id)).map(p=>p.id)])];
-      if(reviewed||row.deleted_indices?.length)for(const id of previousIds.filter(id=>!currentIds.includes(id))){
-        try{await call(base+'/'+id,{method:'DELETE'});}catch(error){if(![404,410].includes(error.status))throw error;}
+      const toRemove=[...new Set([...removedIds,...((reviewed||row.deleted_indices?.length)?previousIds.filter(id=>!currentIds.includes(id)):[])])];
+      let removed=0;
+      for(const id of toRemove){
+        // Verify even previously completed deletions. A restored/late event must not survive a tombstone.
+        let existing;try{existing=await call(base+'/'+id);}catch(error){if([404,410].includes(error.status))continue;throw error;}
+        if(existing?.status==='cancelled')continue;
+        try{await call(base+'/'+id,{method:'DELETE'});removed++;}catch(error){if(![404,410].includes(error.status))throw error;}
       }
+      trace('google.deletions',{count:toRemove.length,removed});
       await db.admin('moa_exports',query,{method:'PATCH',body:{status:'complete',links,event_ids:currentIds}});
-      return {reused:false,links,blocked,reviewed};
+      return {reused:false,links,blocked,reviewed,removed,checkedDeletions:toRemove.length};
     })
   };
 }
