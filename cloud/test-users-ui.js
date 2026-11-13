@@ -1,7 +1,7 @@
 let testMode=false,testVisitBusy=false;
 async function loadTestUser(){if(!signedIn)return;const pref=await api('/api/test/settings');testMode=pref.test_user;document.getElementById('test-user-toggle').checked=testMode;document.getElementById('test-reset').disabled=!testMode;document.getElementById('test-status').textContent=testMode?'테스트 사용자 · 실행당 게시물 최대 1개':'일반 사용자';}
 async function testVisit(){if(!signedIn||testVisitBusy||!navigator.onLine)return;testVisitBusy=true;
- try{await loadTestUser();if(!testMode)return;const r=await api('/api/test/collect',{});document.getElementById('test-status').textContent=r.processed?'게시물 1개를 확인했습니다.':'수집 조건을 충족하는 게시물이 없어 수집하지 않았습니다.';if(r.processed)await Promise.all([history(),connections(),loadManagedEvents()]);}
+ try{await loadTestUser();if(!testMode)return;const r=await api('/api/test/collect',{});document.getElementById('test-status').textContent=r.processed?'게시물 1개를 확인했습니다.':r.deferred?.some(a=>a.failed)?'이전 수집 오류로 대기 중입니다. 진행상황에서 오류와 다음 실행 시각을 확인하세요.':'수집 대기 시간이거나 활성 구독이 없어 건너뛰었습니다.';if(r.processed)await Promise.all([history(),connections(),loadManagedEvents()]);}
  catch(e){document.getElementById('test-status').textContent=e.message;diagnosticLog('test.collect.failed',{code:diagnosticCategory(e.message)});}finally{testVisitBusy=false;}}
 function setupTestUsers(){
  document.getElementById('test-user-toggle').onchange=async e=>{e.target.disabled=true;try{await api('/api/test/settings',{test_user:e.target.checked});await loadTestUser();}catch(err){e.target.checked=testMode;document.getElementById('test-status').textContent=err.message;}finally{e.target.disabled=false;}};

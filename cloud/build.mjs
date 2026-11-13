@@ -51,7 +51,7 @@ js=js.replace("function render(row) {","function render(row) { openView('review'
 js=js.replace("$('auth-title').textContent=signedIn?","$('auth-panel').hidden=!!signedIn;$('member-email').textContent=signedIn?.login??'';$('settings-email').textContent=signedIn?.login??''; $('auth-title').textContent=signedIn?");
 // Instrument only the cloud bundle; keep the local application independent.
 const diagnosticUI=(await readFile('cloud/diagnostics-ui.js','utf8')).replace('__BUILD_ID__',process.env.VERCEL_GIT_COMMIT_SHA?.slice(0,12)||'local');
-js=diagnosticUI+'\n'+await readFile('cloud/reconcile-ui.js','utf8')+'\n'+await readFile('cloud/test-users-ui.js','utf8')+'\n'+js;
+js=await readFile('cloud/devices-ui.js','utf8')+'\n'+diagnosticUI+'\n'+await readFile('cloud/reconcile-ui.js','utf8')+'\n'+await readFile('cloud/test-users-ui.js','utf8')+'\n'+js;
 js=js.replace(/async function api\(path, data\) \{[\s\S]*?\n\}/, 'async function api(path,data){return diagnosticApi(path,data);}');
 js=js.replace("function message(text) { $('message').textContent = text; }", "function message(text) { $('message').textContent=text;diagnosticNotice(text); }");
 js=js.replace("signedIn=state.user;", "signedIn=state.user;diagnosticBind(signedIn);if(signedIn)queueMicrotask(async()=>{await testVisit();void reconcileCalendar(true);});");
@@ -60,6 +60,6 @@ js=js.replace("const readImage = file => new Promise((resolve, reject) => { cons
 js=js.replace("await Promise.all([status(), history()]).catch(() => {});", "await Promise.all([status(),history(),loadManagedEvents()]).catch(()=>{});");
 js=js.replace("message(r.reused ?", "message(r.pending ? 'Google 반영 대기 중입니다. 진행상황에서 확인해 주세요.' : r.blocked?.length ? '날짜가 없는 일정은 등록 대기입니다. 진행상황에서 확인해 주세요.' : r.reused ?");
 js=js.replace("$('settings-status').textContent=text;","$('settings-status').textContent=text;diagnosticNotice(text);");
-js+='\nsetupDiagnostics();setupReconciliation();setupTestUsers();';
+js+='\nsetupDiagnostics();setupReconciliation();setupTestUsers();setupDevices();';
 await writeFile('dist/index.html',html);await writeFile('dist/app.js',js);await copyFile('cloud/style.css','dist/style.css');
 await buildPolicies();

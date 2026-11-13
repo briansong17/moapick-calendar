@@ -44,3 +44,13 @@ test('excluded media does not invoke AI and a reset generation prevents stale ca
  await build('first').analyzeInput({images:[image]});await build('first').analyzeInput({images:[image]});assert.equal(analyzed,1);
  await build('reset').analyzeInput({images:[image]});assert.equal(analyzed,2);
 });
+
+test('old daily-quota backoff is re-evaluated after increasing the allowed limit',async()=>{
+ const {db,tables}=fixture();tables.moa_subscriptions[1].enabled=false;
+ tables.moa_test_accounts.push({user_id:'owner',username:'a',phase:'initial',next_due:'2099-01-01',error:'오늘의 분석 한도에 도달했습니다.'});
+ const day=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Seoul',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());tables.moa_limits=[{bucket:'analysis:'+day,count:22}];let calls=0;
+ const options={db,collection:{locked:async(_,fn)=>fn()},createScoped:()=>({poll:async()=>calls++})};
+ assert.equal((await createTestUsers({...options,dailyLimit:20}).run('owner')).processed,false);assert.equal(calls,0);
+ assert.equal((await createTestUsers({...options,dailyLimit:100}).run('owner')).processed,true);assert.equal(calls,1);
+ tables.moa_test_accounts[0].error='다른 오류';assert.equal((await createTestUsers({...options,dailyLimit:100}).run('owner')).processed,false);assert.equal(calls,1);
+});
