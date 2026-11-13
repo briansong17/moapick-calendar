@@ -65,7 +65,7 @@ export function createCloudGoogle({db,crypto,env,locked,clientFactory=options=>n
       const [prior]=await db.admin('moa_exports',query);
       if(!verify&&prior?.status==='complete'&&prior.fingerprint===fingerprint)return {reused:true,links:prior.links,blocked};
       // Preserve the last known IDs even when a request fails midway.
-      const previousIds=prior?.event_ids?.length?prior.event_ids:(prior?row.result.events.map((_,i)=>digest(`moa:${legacy?.source_user_id??uid}:${row.id}:${i}`)):[]);
+      const previousIds=Array.isArray(prior?.event_ids)?prior.event_ids:(prior?row.result.events.map((_,i)=>digest(`moa:${legacy?.source_user_id??uid}:${row.id}:${i}`)):[]);
       await db.admin('moa_exports',{}, {method:'POST',prefer:'resolution=merge-duplicates',body:{user_id:uid,analysis_id:row.id,calendar_id:calendarId,fingerprint,status:'pending',event_ids:[...new Set([...previousIds,...payloads.map(p=>p.id)])]}});
       const base='/calendars/'+encodeURIComponent(calendarId)+'/events',links=[];
       for(const payload of payloads){

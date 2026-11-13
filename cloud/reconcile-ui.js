@@ -7,7 +7,7 @@ async function reconcileCalendar(begin=true){
  let again=false;
  try{
   const r=await api('/api/sync/reconcile',{begin});
-  status.textContent=r.reason??(r.pending?'일부 일정이 반영 대기 중입니다. 자동으로 다시 확인합니다.':r.more?'미래 일정을 계속 동기화하고 있습니다…':'미래 일정 동기화 확인을 마쳤습니다. 아이폰 캘린더 표시는 기기 동기화 후 갱신됩니다.');
+  status.textContent=r.reason??(r.more?'미래 일정을 계속 동기화하고 있습니다…':r.pending?'일부 일정이 반영 대기 중입니다. 자동으로 다시 확인합니다.':'미래 일정 동기화 확인을 마쳤습니다. 아이폰 캘린더 표시는 기기 동기화 후 갱신됩니다.');
   again=r.more||(r.pending&&r.retryable!==false);
   if(!r.more)await Promise.all([loadManagedEvents(),history(),connections()]);
   if(again)reconciliationTimer=setTimeout(()=>reconcileCalendar(!r.more),r.more?1000:60000);
