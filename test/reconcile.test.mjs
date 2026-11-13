@@ -10,7 +10,7 @@ test('미래·진행 중 일정만 등록하며 한국 날짜 및 종료 시각 
 test('접속 대조는 본인 작업만 즉시 실행하고 Google 실제 확인을 요청한다',async()=>{
  let job={user_id:'owner',analysis_id:'analysis',requested_at:'stamp',attempts:0},created=0,published;
  const db={rpc:async()=>true,admin:async(table,q,o)=>{
-  if(table==='moa_subscriptions')return [];
+  if(table==='moa_preferences')return [];if(table==='moa_subscriptions')return [];
   if(table==='moa_analyses')return [{id:'analysis',owner_id:'owner',status:'complete'}];
   if(table==='moa_reviews')return [];if(table==='moa_event_deletions')return [{event_index:1}];
   if(table==='moa_sync_jobs'){if(o?.method==='POST'){job={...o.body,attempts:0};return;}if(o?.method==='DELETE'){job=null;return;}assert.equal(q.user_id,'eq.owner');return job?[job]:[];}throw Error(table);

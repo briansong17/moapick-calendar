@@ -1,3 +1,5 @@
+import {runCollectionJob} from './job.mjs';
+import {preferences,historyQuery,createTestUsers} from './test-users.mjs';
 import {saveRequestLog} from './request-logs.mjs';
 import {trace,tracedRequest,traceSnapshot,traceDatabase,diagnosticFailureCode} from './diagnostics.mjs';
 import {eventEntries,deletionIndices} from './event-management.mjs';
@@ -19,6 +21,7 @@ export function createHandler(env,{db=createSupabase(env),crypto=cipher(env.TOKE
   let sync;
   const collect=collection??createCollection({db,env,onComplete:row=>sync.enqueueAnalysis(row)}),google=createCloudGoogle({db,crypto,env,locked:collect.locked});
   sync=createSync({db,env,collection:collect,google});
+  const testers=createTestUsers({db,collection:collect,createScoped:(scoped,scope)=>createCollection({db:scoped,env,scope,onComplete:row=>sync.enqueueAnalysis(row)})});
   return async(req,res)=>tracedRequest(async()=>{
     let logUid=null,logPath='other';const requestStarted=Date.now();
     const send=async(status,value,type='application/json; charset=utf-8')=>{trace('request.complete',{status});const diagnostic=traceSnapshot();const persisted=await saveRequestLog(logDb,{uid:logUid,path:logPath,method:req.method,status,started:requestStarted,snapshot:diagnostic,build:env.VERCEL_GIT_COMMIT_SHA});if(!persisted)diagnostic.logUnavailable=true;if(type.startsWith('application/json')&&value&&!Array.isArray(value))value={...value,diagnostics:diagnostic};res.setHeader('X-Moa-Request-Id',diagnostic.requestId);res.writeHead(status,{...securityHeaders,'Content-Type':type});res.end(type.startsWith('application/json')?JSON.stringify(value):value);};
@@ -29,8 +32,7 @@ export function createHandler(env,{db=createSupabase(env),crypto=cipher(env.TOKE
       // Schedulers use an explicit secret and do not depend on browser cookies.
       if(path==='/api/cron'&&req.method==='GET'){
         if(!env.CRON_SECRET || req.headers.authorization!==`Bearer ${env.CRON_SECRET}`)throw new AppError('인증이 필요합니다.',401);
-        const due=await db.admin('moa_accounts',{next_due:`lte.${new Date().toISOString()}`,phase:'neq.paused',order:'next_due.asc',limit:'20'});
-        for(const a of due){if((await db.admin('moa_subscriptions',{username:`eq.${a.username}`,enabled:'eq.true',limit:'1'})).length){await collect.poll(a.username);break;}}
+        collect.runTest=testers.run;await runCollectionJob({db,collection:collect});await sync.drain(2);
         return send(200,{ok:true});
       }
       validateOrigin(req,env.PUBLIC_ORIGIN,{callback});
@@ -59,10 +61,16 @@ export function createHandler(env,{db=createSupabase(env),crypto=cipher(env.TOKE
       const subscriptions=()=>db.read('moa_subscriptions',{},s.token);
       const requireSubscription=async name=>{if(!(await db.read('moa_subscriptions',{username:`eq.${name}`},s.token)).length)throw new AppError('구독을 찾을 수 없습니다.',404);};
       const collectorStatus=async()=>{
+        const pref=await preferences(db,uid);
+        if(pref.test_user){const subs=await subscriptions(),accounts=await db.read('moa_test_accounts',{},s.token);return {busy:false,interval_minutes:60,accounts:subs.map(sub=>({...accounts.find(a=>a.username===sub.username),username:sub.username,enabled:sub.enabled,phase:accounts.find(a=>a.username===sub.username)?.phase??'initial',processed:accounts.find(a=>a.username===sub.username)?.processed??0})),posts:[]};}
         const subs=await subscriptions(),accounts=await db.read('moa_accounts',{},s.token),posts=[];
         for(const a of accounts){posts.push(...await db.admin('moa_posts',{username:`eq.${a.username}`,select:'id,username,status,analysis_id,attempts,error,updated_at',order:'updated_at.desc',limit:'10'}));}
         return {busy:false,interval_minutes:60,accounts:accounts.map(a=>({...a,enabled:subs.find(x=>x.username===a.username)?.enabled})),posts};
       };
+      if(path==='/api/test/settings'&&req.method==='GET')return send(200,await preferences(db,uid));
+      if(path==='/api/test/settings'&&req.method==='POST'){const input=await readBody(req);if(typeof input.test_user!=='boolean')throw new AppError('설정값을 확인하세요.');await db.admin('moa_preferences',{}, {method:'POST',prefer:'resolution=merge-duplicates',body:{user_id:uid,test_user:input.test_user}});trace('test.mode.save',{connected:input.test_user});return send(200,{ok:true});}
+      if(path==='/api/test/reset'&&req.method==='POST')return send(200,await testers.reset(uid,await readBody(req)));
+      if(path==='/api/test/collect'&&req.method==='POST')return send(200,await testers.run(uid));
       if(path==='/api/account/delete'&&req.method==='POST'){await auth.remove(s,await readBody(req),res);return send(200,{ok:true});}
       if(path==='/api/diagnostics'&&req.method==='GET'){
         const [jobs,exports,analyses,accounts]=await Promise.all([
@@ -87,7 +95,7 @@ export function createHandler(env,{db=createSupabase(env),crypto=cipher(env.TOKE
       if(path==='/api/meta/accounts'&&req.method==='POST'){await collect.subscribe(uid,(await readBody(req)).username);await sync.enqueueVisible(uid);return send(200,await collectorStatus());}
       if(['/api/meta/enable','/api/meta/unsubscribe','/api/meta/poll'].includes(path)&&req.method==='POST'){
         const input=await readBody(req),name=accountName(input.username);await requireSubscription(name);
-        if(path.endsWith('/poll')){await collect.poll(name);await sync.drain(1);}
+        if(path.endsWith('/poll')){if((await preferences(db,uid)).test_user)await testers.run(uid,{username:name});else await collect.poll(name);await sync.drain(1);}
         else if(path.endsWith('/unsubscribe'))await db.admin('moa_subscriptions',{user_id:`eq.${uid}`,username:`eq.${name}`},{method:'DELETE'});
         else{if(typeof input.enabled!=='boolean')throw new AppError('설정값을 확인하세요.');await db.admin('moa_subscriptions',{user_id:`eq.${uid}`,username:`eq.${name}`},{method:'PATCH',body:{enabled:input.enabled}});}
         return send(200,await collectorStatus());
@@ -120,7 +128,7 @@ export function createHandler(env,{db=createSupabase(env),crypto=cipher(env.TOKE
         return send(200,{deleted:count,sync:result});
       }
       if(path==='/api/analyses'&&req.method==='GET'){
-        const rows=await db.read('moa_analyses',{status:'neq.superseded',order:'created_at.desc',limit:'50'},s.token),reviews=await db.read('moa_reviews',{},s.token);
+        const pref=await preferences(db,uid);const rows=await db.read('moa_analyses',{...historyQuery(pref),...(pref.test_user?{owner_id:`eq.${uid}`}:{ }),status:'neq.superseded',order:'created_at.desc',limit:'50'},s.token),reviews=await db.read('moa_reviews',{},s.token);
         return send(200,rows.map(r=>({...r,reviewed:reviews.find(v=>v.analysis_id===r.id)?.events??null,source_indices:reviews.find(v=>v.analysis_id===r.id)?.source_indices??null})));
       }
       const match=/^\/api\/analyses\/([a-f0-9-]+)(\/review|\/google|\/calendar.ics)?$/.exec(path);

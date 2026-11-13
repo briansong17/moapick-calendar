@@ -1,4 +1,4 @@
-const allowed=new Set(['/api/auth/me','/api/status','/api/integrations','/api/diagnostics','/api/events','/api/analyses','/api/analyze','/api/google/connect','/api/google/calendar','/oauth/google/callback','/api/meta/accounts','/api/meta/enable','/api/meta/unsubscribe','/api/meta/poll','/api/sync/reconcile','/api/account/delete']);
+const allowed=new Set(['/api/test/settings','/api/test/reset','/api/test/collect','/api/auth/me','/api/status','/api/integrations','/api/diagnostics','/api/events','/api/analyses','/api/analyze','/api/google/connect','/api/google/calendar','/oauth/google/callback','/api/meta/accounts','/api/meta/enable','/api/meta/unsubscribe','/api/meta/poll','/api/sync/reconcile','/api/account/delete']);
 export function requestRoute(path){if(allowed.has(path))return path;if(/^\/api\/analyses\/[a-f0-9-]{36}(\/(review|google|delete-events|calendar.ics))?$/.test(path))return path.replace(/\/analyses\/[^/]+/,'/analyses/:id');return 'other';}
 export async function saveRequestLog(db,{uid,path,method,status,started,snapshot,build}){
  if(!uid||path==='/api/diagnostics')return true;

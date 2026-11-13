@@ -1,3 +1,4 @@
+import {preferences,historyQuery} from './test-users.mjs';
 import {trace} from './diagnostics.mjs';
 import {AppError} from '../lib/extraction.mjs';
 import {cipher} from './security.mjs';
@@ -6,13 +7,14 @@ export function createSync({db,env,collection,google=createCloudGoogle({db,env,c
   async function enqueue(uid,id){trace('sync.enqueue',{analysisId:id});await db.admin('moa_sync_jobs',{}, {method:'POST',prefer:'resolution=merge-duplicates',body:{user_id:uid,analysis_id:id,requested_at:new Date().toISOString(),next_due:new Date().toISOString(),error:null}});}
   async function enqueueAnalysis(row){
     const users=row.owner_id?[{user_id:row.owner_id}]:await db.admin('moa_subscriptions',{username:`eq.${row.account}`,enabled:'eq.true'});
-    for(const u of users)await enqueue(u.user_id,row.id);
+    for(const u of users){const pref=await preferences(db,u.user_id);if(!row.owner_id&&(pref.test_user||(pref.history_reset_at&&row.created_at<pref.history_reset_at)))continue;await enqueue(u.user_id,row.id);}
   }
   async function enqueueVisible(uid){
+    const pref=await preferences(db,uid);
     const subs=await db.admin('moa_subscriptions',{user_id:`eq.${uid}`,enabled:'eq.true'});
-    const queries=[{owner_id:`eq.${uid}`},...subs.map(s=>({account:`eq.${s.username}`}))];
+    const queries=[{owner_id:`eq.${uid}`},...(pref.test_user?[]:subs.map(s=>({account:`eq.${s.username}`})))];
     for(const query of queries)for(let offset=0;;offset+=200){
-      const rows=await db.admin('moa_analyses',{...query,status:'eq.complete',select:'id',order:'created_at.asc,id.asc',limit:'200',offset:String(offset)});
+      const rows=await db.admin('moa_analyses',{...query,...historyQuery(pref),status:'eq.complete',select:'id',order:'created_at.asc,id.asc',limit:'200',offset:String(offset)});
       for(const row of rows)await enqueue(uid,row.id);
       if(rows.length<200)break;
     }

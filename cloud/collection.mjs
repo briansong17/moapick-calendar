@@ -4,7 +4,7 @@ import {AppError,validateInput,inputHash,extract} from '../lib/extraction.mjs';
 import {accountName,contentHash,createInstagram} from '../lib/instagram.mjs';
 import {pastBoundary} from '../lib/collector.mjs';
 const day=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Seoul',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
-export function createCollection({db,env,analyze=extract,instagram,onComplete=async()=>{}}) {
+export function createCollection({db,env,analyze=extract,instagram,onComplete=async()=>{},scope=null}) {
   const model=env.OPENAI_MODEL||'gpt-5.4-mini';
   const config=env.META_TOKEN?{token:env.META_TOKEN,ig_id:env.META_IG_ID,version:env.META_API_VERSION||'v27.0',username:env.META_USERNAME}:null;
   const state={meta:config};
@@ -13,10 +13,10 @@ export function createCollection({db,env,analyze=extract,instagram,onComplete=as
     const owner=randomUUID();if(!await db.rpc('moa_claim_lock',{p_name:name,p_owner:owner,p_seconds:300}))throw new AppError('처리 중입니다. 잠시 후 다시 시도하세요.',409);
     try{return await fn();}finally{await db.admin('moa_locks',{name:`eq.${name}`,owner:`eq.${owner}`},{method:'DELETE'});}
   }
-  async function analyzeInput(raw,userId=null) {
+  async function analyzeInput(raw,userId=scope?.uid??null) {
     if(!env.OPENAI_API_KEY)throw new AppError('이미지 분석 연결 준비 중입니다.',503);
-    trace('image.validate');const input=validateInput(raw,{maxImages:userId?3:20});trace('image.validated',{count:input.images.length});
-    const hash=inputHash(input,model+':'+(userId??'public-instagram'));
+    trace('image.validate');const input=validateInput(raw,{maxImages:scope?20:userId?3:20});trace('image.validated',{count:input.images.length});
+    const hash=inputHash(input,model+':'+(userId??'public-instagram')+(scope?':test:'+scope.generation:''));
     return locked('analysis',async()=>{
       const [cached]=await db.admin('moa_analyses',{hash:`eq.${hash}`,status:'eq.complete',limit:'1'});
       if(cached){trace('analysis.cache',{analysisId:cached.id,cached:true});await onComplete(cached);return cached;}
