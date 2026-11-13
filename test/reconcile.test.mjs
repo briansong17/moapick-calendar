@@ -26,6 +26,13 @@ test('캘린더 생성 결과 불명확 또는 연결 미완료 시 중복 생�
  }
 });
 
+test('동일 회원의 동시 대조는 실패 대신 재시도 대기로 알리고 실제 장애는 숨기지 않는다',async()=>{
+ let status=409;
+ const sync=createSync({db:{},env:{},collection:{locked:async()=>{throw Object.assign(new Error('busy'),{status});}},google:{status:async()=>assert.fail('must not execute without lock')}});
+ const r=await sync.reconcile('owner');assert.equal(r.pending,true);assert.equal(r.busy,true);assert.equal(r.retryable,true);assert.equal(r.processed,0);
+ status=503;await assert.rejects(sync.reconcile('owner'),error=>error.status===503);
+});
+
 test('테스트 모드·기록 초기화·구독 해제 후에도 본인의 삭제·내보내기 기록은 대조 대상이다',async()=>{
  const enqueued=[],queries=[];
  const db={admin:async(t,q,o)=>{

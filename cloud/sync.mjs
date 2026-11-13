@@ -55,7 +55,7 @@ export function createSync({db,env,collection,google=createCloudGoogle({db,env,c
     return jobs.length;
   }
   async function reconcile(uid,{begin=true}={}){
-    return collection.locked('reconcile:'+uid,async()=>{
+    try{return await collection.locked('reconcile:'+uid,async()=>{
       trace('reconcile.start');
       const state=await google.status(uid);
       if(!state.connected||state.reconnectRequired)return {pending:true,reason:'Google 계정을 연결해 주세요.',retryable:false,more:false};
@@ -67,7 +67,11 @@ export function createSync({db,env,collection,google=createCloudGoogle({db,env,c
       const more=(await db.admin('moa_sync_jobs',{user_id:`eq.${uid}`,next_due:`lte.${new Date().toISOString()}`,limit:'1'})).length>0;
       if((await db.admin('moa_sync_jobs',{user_id:`eq.${uid}`,limit:'1'})).length)pending++;
       trace('reconcile.complete',{count:jobs.length,pending:!!pending});return {processed:jobs.length,pending:!!pending,more};
-    });
+    });}catch(error){
+      if(error.status!==409)throw error;
+      trace('reconcile.busy',{pending:true});
+      return {processed:0,pending:true,more:false,retryable:true,busy:true,reason:'같은 계정의 다른 요청에서 Google 반영을 확인 중입니다. 잠시 후 자동으로 다시 확인합니다.'};
+    }
   }
   return {reconcile,enqueue,enqueueAnalysis,enqueueVisible,one,drain};
 }
