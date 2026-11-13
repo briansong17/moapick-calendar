@@ -21,6 +21,7 @@ export function createTestUsers({db,collection,createScoped,dailyLimit=100}){
    if(Date.parse(account.next_due)>now.getTime()){
     let quotaRecovered=false;
     if(account.error==='오늘의 분석 한도에 도달했습니다.'){const day=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Seoul',year:'numeric',month:'2-digit',day:'2-digit'}).format(now);const [counter]=await db.admin('moa_limits',{bucket:`eq.analysis:${day}`,select:'count'});quotaRecovered=(counter?.count??0)<dailyLimit;}
+    if(account.error==='OpenAI 호출 제한에 도달했습니다. 잠시 후 다시 시도하세요.'){const [failed]=await db.admin('moa_analyses',{owner_id:`eq.${uid}`,status:'eq.failed',select:'created_at,usage',order:'created_at.desc',limit:'1'});if(failed&&!failed.usage?.failure&&now.getTime()-Date.parse(failed.created_at)>=60000)quotaRecovered=true;}
     if(!quotaRecovered){skipped.push({nextDue:account.next_due,failed:!!account.error});continue;}
    }
    trace('test.collect.start');await createScoped(scoped,{uid,generation:pref.generation}).poll(sub.username);trace('test.collect.complete',{count:1});return {processed:true,count:1};

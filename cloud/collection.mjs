@@ -20,13 +20,14 @@ export function createCollection({db,env,analyze=extract,instagram,onComplete=as
     return locked('analysis',async()=>{
       const [cached]=await db.admin('moa_analyses',{hash:`eq.${hash}`,status:'eq.complete',limit:'1'});
       if(cached){trace('analysis.cache',{analysisId:cached.id,cached:true});await onComplete(cached);return cached;}
+      const [cooldown]=await db.admin('moa_limits',{bucket:'eq.openai:cooldown',expires_at:`gt.${new Date().toISOString()}`,select:'expires_at',limit:'1'});if(cooldown){throw Object.assign(new AppError('OpenAI 호출 제한 대기 중입니다. 다음 실행 시각 이후 다시 확인합니다.',429),{retryAfterSeconds:Math.max(30,Math.ceil((Date.parse(cooldown.expires_at)-Date.now())/1000))});}
       if(!await db.rpc('moa_take_limit',{p_bucket:'analysis:'+day(),p_limit:Number(env.DAILY_ANALYSIS_LIMIT||100),p_seconds:86400}))throw new AppError('오늘의 분석 한도에 도달했습니다.',429);
       const {images,...metadata}=input;
       const [row]=await db.admin('moa_analyses',{}, {method:'POST',prefer:'return=representation',body:{owner_id:userId,account:userId?null:input.account,hash,status:'running',metadata:{...metadata,image_count:images.length,model}}});
       let completed;
       try{trace('openai.start',{analysisId:row.id});const {result,usage}=await analyze(input,{apiKey:env.OPENAI_API_KEY,model});
         trace('openai.complete',{analysisId:row.id,count:result.events.length});await db.admin('moa_analyses',{id:`eq.${row.id}`},{method:'PATCH',body:{status:'complete',result,usage}});completed={...row,status:'complete',result,usage};
-      }catch(e){trace('openai.failed',{status:e.status??500});await db.admin('moa_analyses',{id:`eq.${row.id}`},{method:'PATCH',body:{status:'failed',error:e instanceof AppError?e.message:'분석 실패'}});throw e;}
+      }catch(e){trace('openai.failed',{status:e.status??500,...(e.provider??{})});if(e.provider&&e.status===429)await db.admin('moa_limits',{}, {method:'POST',prefer:'resolution=merge-duplicates',body:{bucket:'openai:cooldown',count:1,expires_at:new Date(Date.now()+e.retryAfterSeconds*1000).toISOString()}});await db.admin('moa_analyses',{id:`eq.${row.id}`},{method:'PATCH',body:{status:'failed',error:e instanceof AppError?e.message:'분석 실패',...(e.provider?{usage:{failure:e.provider}}:{})}});throw e;}
       await onComplete(completed);return completed;
     });
   }
@@ -80,7 +81,7 @@ export function createCollection({db,env,analyze=extract,instagram,onComplete=as
         else if(!queue.length&&a.phase==='refresh'&&processed>=30)await update({phase:'ready',queue,cursor:'',seen:[],processed,reason:'최근 30개 확인'});
         else await update({queue,processed,...(!queue.length?{cursor:a.next_cursor}:{})});
         await update({error:null,last_checked:new Date().toISOString(),next_due:new Date(Date.now()+(a.phase==='initial'?60000:3600000)).toISOString()});
-      }catch(e){await update({error:e instanceof AppError?e.message:'수집 실패',next_due:new Date(Date.now()+3600000).toISOString()});throw e;}
+      }catch(e){await update({error:e instanceof AppError?e.message:'수집 실패',next_due:new Date(Date.now()+(e.status===429&&e.retryAfterSeconds?e.retryAfterSeconds*1000:3600000)).toISOString()});throw e;}
     });
   }
   return {analyzeInput,subscribe,poll,locked,metaStatus:()=>ig.status()};
