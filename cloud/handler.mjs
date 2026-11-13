@@ -87,7 +87,7 @@ export function createHandler(env,{db=createSupabase(env),crypto=cipher(env.TOKE
           analyses:analyses.map(a=>({analysisId:a.id,status:a.status,createdAt:a.created_at,count:a.result?.events?.length??0,failureCode:diagnosticFailureCode(a.error)})),verification});
       }
       if(path==='/api/sync/reconcile'&&req.method==='POST'){const input=await readBody(req);return send(200,await sync.reconcile(uid,{begin:input.begin!==false}));}
-      if(path==='/api/status'&&req.method==='GET')return send(200,{configured:!!env.OPENAI_API_KEY,model:env.OPENAI_MODEL||'gpt-5.4-mini',count:null,limit:Number(env.DAILY_ANALYSIS_LIMIT||20),busy:false});
+      if(path==='/api/status'&&req.method==='GET')return send(200,{configured:!!env.OPENAI_API_KEY,model:env.OPENAI_MODEL||'gpt-5.4-mini',count:null,limit:Number(env.DAILY_ANALYSIS_LIMIT||100),busy:false});
       if(path==='/api/integrations'&&req.method==='GET')return send(200,{google:await google.status(uid),meta:collect.metaStatus(),collector:await collectorStatus()});
       if(path==='/api/google/connect'&&req.method==='POST')return send(200,await google.begin(uid,res));
       if(path==='/oauth/google/callback'&&req.method==='GET'){await google.callback(uid,req,res,url.searchParams);return send(200,'<!doctype html><html lang="ko"><meta charset="utf-8"><title>Google 연결 완료</title><h1>Google 캘린더를 연결했습니다.</h1><a href="/">모아로 돌아가기</a></html>','text/html; charset=utf-8');}
@@ -145,7 +145,7 @@ export function createHandler(env,{db=createSupabase(env),crypto=cipher(env.TOKE
         if(req.method==='POST'&&match[2]==='/google'){if((await readBody(req)).confirmed!==true)throw new AppError('등록 확인이 필요합니다.');await sync.enqueue(uid,row.id);return send(200,await sync.one(uid,row.id));}
       }
       if(path==='/api/analyze'&&req.method==='POST'){
-        if(!await db.rpc('moa_take_limit',{p_bucket:'user-analysis:'+uid+':'+new Date().toISOString().slice(0,10),p_limit:5,p_seconds:86400}))throw new AppError('회원별 일일 분석 한도에 도달했습니다.',429);
+        if(!await db.rpc('moa_take_limit',{p_bucket:'user-analysis:'+uid+':'+new Date().toISOString().slice(0,10),p_limit:Number(env.DAILY_ANALYSIS_LIMIT||100),p_seconds:86400}))throw new AppError('회원별 일일 분석 한도에 도달했습니다.',429);
         trace('input.read');const input=await readBody(req);trace('analysis.start');const row=await collect.analyzeInput(input,uid);trace('analysis.complete',{analysisId:row.id,count:row.result?.events?.length??0});await sync.enqueue(uid,row.id);const result=await sync.one(uid,row.id);return send(200,{...row,reviewed:null,sync:result});
       }
       throw new AppError('페이지를 찾을 수 없습니다.',404);

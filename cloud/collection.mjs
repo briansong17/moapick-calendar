@@ -20,7 +20,7 @@ export function createCollection({db,env,analyze=extract,instagram,onComplete=as
     return locked('analysis',async()=>{
       const [cached]=await db.admin('moa_analyses',{hash:`eq.${hash}`,status:'eq.complete',limit:'1'});
       if(cached){trace('analysis.cache',{analysisId:cached.id,cached:true});await onComplete(cached);return cached;}
-      if(!await db.rpc('moa_take_limit',{p_bucket:'analysis:'+day(),p_limit:Number(env.DAILY_ANALYSIS_LIMIT||20),p_seconds:86400}))throw new AppError('오늘의 분석 한도에 도달했습니다.',429);
+      if(!await db.rpc('moa_take_limit',{p_bucket:'analysis:'+day(),p_limit:Number(env.DAILY_ANALYSIS_LIMIT||100),p_seconds:86400}))throw new AppError('오늘의 분석 한도에 도달했습니다.',429);
       const {images,...metadata}=input;
       const [row]=await db.admin('moa_analyses',{}, {method:'POST',prefer:'return=representation',body:{owner_id:userId,account:userId?null:input.account,hash,status:'running',metadata:{...metadata,image_count:images.length,model}}});
       let completed;
