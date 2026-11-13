@@ -1,3 +1,4 @@
+import {createServerMonitor} from './lib/server-monitor.mjs';
 import { createAccounts, sessionCookie } from './lib/accounts.mjs';
 import { accountName } from './lib/instagram.mjs';
 import { createServer } from 'node:http';
@@ -21,13 +22,13 @@ async function body(req) {
   }
   try { return JSON.parse(Buffer.concat(chunks).toString()); } catch { throw new AppError('요청 형식이 올바르지 않습니다.'); }
 }
-export function makeServer({ store, apiKey, model = 'gpt-5.4-mini', limit = 20, analyze = extract, vault, instagramClient }) {
+export function makeServer({ store, apiKey, model = 'gpt-5.4-mini', limit = 20, analyze = extract, vault, instagramClient, monitoring = false, monitorOptions = {} }) {
   const accounts = createAccounts(store.db);
   let busy = false;
   async function analyzeInput(raw, user=null) {
     if (!apiKey) throw new AppError('서버에 OpenAI API 키가 설정되지 않았습니다.', 503);
     const input = validateInput(raw, {maxImages:user ? 3 : 20}), hash = inputHash(input, model + ':' + (user?.id ?? 'public-instagram')), cached = store.cached(hash);
-    if (cached) return { ...cached, cached: true };
+    if (cached) {monitor?.change('기존 분석 재사용');return { ...cached, cached: true };}
     if (busy) throw new AppError('다른 이미지를 분석 중입니다. 완료 후 시도해 주세요.', 409);
     const { images, ...metadata } = input;
     const id = store.start(hash, { ...metadata, image_count: images.length, model }, limit);
@@ -35,8 +36,8 @@ export function makeServer({ store, apiKey, model = 'gpt-5.4-mini', limit = 20, 
     busy = true;
     try {
       const { result, usage } = await analyze(input, { apiKey, model });
-      store.complete(id, result, usage); return { ...store.get(id), cached: false };
-    } catch (e) { store.fail(id, e instanceof AppError ? e.message : '분석 중 오류가 발생했습니다.'); throw e; }
+      store.complete(id, result, usage);monitor?.change('이미지 분석 저장 완료'); return { ...store.get(id), cached: false };
+    } catch (e) { monitor?.change('이미지 분석 실패');store.fail(id, e instanceof AppError ? e.message : '분석 중 오류가 발생했습니다.'); throw e; }
     finally { busy = false; }
   }
   const googleClients = new Map();
@@ -57,7 +58,16 @@ export function makeServer({ store, apiKey, model = 'gpt-5.4-mini', limit = 20, 
     state.accounts=state.accounts.filter(a=>subscribed(user,a.username)).map(a=>({...a,enabled:store.db.prepare('SELECT enabled FROM subscriptions WHERE user_id=? AND username=?').get(user.id,a.username).enabled}));
     state.posts=state.posts.filter(p=>subscribed(user,p.username)); return state;
   };
+  const monitor=monitoring?createServerMonitor({...monitorOptions,state:()=>{
+    store.db.prepare('SELECT 1').get();
+    const rows=store.db.prepare('SELECT status,COUNT(*) AS n FROM analyses GROUP BY status').all();
+    const count=status=>rows.find(r=>r.status===status)?.n??0;
+    const values={'SQLite':'연결 정상','AI 분석':busy?'진행 중':'대기','오늘 분석 사용량':store.count()+'/'+limit,'분석 완료':count('complete'),'분석 실패':count('failed'),'중단된 분석':count('interrupted'),'분석 중':count('running')};
+    if(collector){const c=collector.status();values['Instagram 수집']=c.busy?'진행 중':'대기';values['수집 활성 계정']=c.accounts.filter(a=>a.enabled).length;values['수집 오류 계정']=c.accounts.filter(a=>a.error).length;values['최근 게시물 완료']=c.posts.filter(p=>p.status==='complete').length;values['최근 게시물 대기']=c.posts.filter(p=>p.status==='pending').length;values['최근 게시물 실패']=c.posts.filter(p=>p.status==='failed').length;}
+    return values;
+  }}):null;
   const server = createServer(async (req, res) => {
+    monitor?.track(req,res);
     const send = (status, value, type = 'application/json; charset=utf-8') => {
       res.writeHead(status, { 'Content-Type': type, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer', 'Content-Security-Policy': "default-src 'self'; img-src 'self' data: blob:; script-src 'self'; style-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'" });
       res.end(type.startsWith('application/json') ? JSON.stringify(value) : value);
@@ -159,8 +169,8 @@ export function makeServer({ store, apiKey, model = 'gpt-5.4-mini', limit = 20, 
     }
   });
   server.requestTimeout = 150000;
-  server.on('listening', () => collector?.start());
-  server.on('close', () => collector?.stop());
+  server.on('listening', () => {collector?.start();monitor?.start();});
+  server.on('close', () => {collector?.stop();monitor?.stop();});
   return server;
 }
 
@@ -170,7 +180,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const port = Number(process.env.PORT ?? 3080), limit = Number(process.env.DAILY_ANALYSIS_LIMIT ?? 20);
   if (!Number.isInteger(limit) || limit < 1 || limit > 1000 || !Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('PORT 또는 DAILY_ANALYSIS_LIMIT 설정을 확인하세요.');
   const vault = createVault(join(root, 'data'));
-  const server = makeServer({ store, vault, apiKey: process.env.OPENAI_API_KEY, model: process.env.OPENAI_MODEL || 'gpt-5.4-mini', limit });
+  const server = makeServer({ monitoring:true,store, vault, apiKey: process.env.OPENAI_API_KEY, model: process.env.OPENAI_MODEL || 'gpt-5.4-mini', limit });
   server.listen(port, '127.0.0.1', () => console.log(`Local: http://127.0.0.1:${port}`));
   server.on('error', () => { console.error('서버 실행 실패: 포트가 사용 중인지 확인하세요.'); process.exitCode = 1; });
 }
