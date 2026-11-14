@@ -8,7 +8,7 @@ export function createCollection({db,env,analyze=extract,instagram,onComplete=as
   const model=env.OPENAI_MODEL||'gpt-5.4-mini';
   const config=env.META_TOKEN?{token:env.META_TOKEN,ig_id:env.META_IG_ID,version:env.META_API_VERSION||'v27.0',username:env.META_USERNAME}:null;
   const state={meta:config};
-  const ig=instagram||createInstagram({vault:{get:k=>state[k],set:(k,v)=>state[k]=v}});
+  const ig=instagram||createInstagram({vault:{get:k=>state[k],set:(k,v)=>state[k]=v},onDiagnostic:trace});
   async function locked(name,fn) {
     const owner=randomUUID();if(!await db.rpc('moa_claim_lock',{p_name:name,p_owner:owner,p_seconds:300}))throw new AppError('처리 중입니다. 잠시 후 다시 시도하세요.',409);
     try{return await fn();}finally{await db.admin('moa_locks',{name:`eq.${name}`,owner:`eq.${owner}`},{method:'DELETE'});}
