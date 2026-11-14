@@ -9,7 +9,7 @@ export function createServerWorker({db,sync,collection,env,wait=ms=>new Promise(
     return tracedRequest(async()=>{
       const started=Date.now();let status=200,result;
       const save=phase=>saveRequestLog(db,{uid,path:'/api/sync/background',method:'POST',status:phase==='running'?102:status,started,snapshot:traceSnapshot(),build:env.VERCEL_GIT_COMMIT_SHA,phase});
-      trace('background.start');await save('running');
+      trace('background.start',{operation:options.source??'request'});await save('running');
       try{result=await collection.locked('worker:'+uid,async()=>{
         const {maxJobs=20,deadline=Date.now()+180000,retryWaitMs=60000}=options;
         let processed=0,waited=0,current;
@@ -29,7 +29,7 @@ export function createServerWorker({db,sync,collection,env,wait=ms=>new Promise(
     const jobs=await db.admin('moa_sync_jobs',{next_due:`lte.${new Date().toISOString()}`,order:'next_due.asc',select:'user_id',limit:String(maxJobs)});
     const users=new Map();for(const job of jobs)users.set(job.user_id,(users.get(job.user_id)??0)+1);
     let processed=0,failed=false;
-    for(const [uid,count]of users){if(Date.now()>=deadline)break;try{processed+=(await syncUser(uid,{maxJobs:count,deadline})).processed;}catch{failed=true;}}
+    for(const [uid,count]of users){if(Date.now()>=deadline)break;try{processed+=(await syncUser(uid,{maxJobs:count,deadline,source:'schedule'})).processed;}catch{failed=true;}}
     return {processed,failed};
   }
   async function tick(){

@@ -51,6 +51,7 @@ test('scheduled calendar retries finish even if Instagram collection throws',asy
  assert.equal(result.collectionFailed,true);assert.equal(result.syncProcessed,6);assert.equal(result.syncFailed,false);
  assert.deepEqual(f.jobs.map(j=>j.user_id),['other']);
  assert.ok(f.published.every(p=>p.uid==='owner'));
+ assert.ok(f.logs.some(r=>r.steps.some(s=>s.stage==='background.start'&&s.operation==='schedule')));
 });
 
 test('server deadline leaves unfinished work durable for the next scheduled run',async()=>{
