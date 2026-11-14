@@ -23,6 +23,19 @@ export function createCloudGoogle({db,crypto,env,locked,clientFactory=options=>n
     try{return await fn(state,call);}finally{await save(uid,state);}
   });
   return {
+    // Operator diagnostics only perform GETs against app-managed IDs derived on the server.
+    inspectManaged:(uid,{id,calendarId,previousCalendars=[],payload})=>operate(uid,async(s,call)=>{
+      if(!s.tokens?.refresh_token)return {connected:false,results:[],limited:false};
+      const primary=calendarId??s.calendar?.id,calendars=[...new Set([primary,...previousCalendars].filter(Boolean))];
+      const results=[];
+      for(const calendar of calendars.slice(0,10)){
+        const entry={calendar:calendar===primary?'current':'previous'};
+        try{const event=await call('/calendars/'+encodeURIComponent(calendar)+'/events/'+id);
+          results.push({...entry,status:event.status==='cancelled'?'deleted':'present',matchesExpected:event.status==='cancelled'||!payload?null:sameManagedEvent(event,payload)});
+        }catch(error){results.push({...entry,status:[404,410].includes(error.status)?'missing':'failed',...(![404,410].includes(error.status)?{httpStatus:error.status??502,failureCode:error.status===401?'auth_required':error.status===403?'permission':'upstream_request'}:{})});}
+      }
+      return {connected:true,results,limited:calendars.length>10};
+    }),
     verifyRecent:uid=>operate(uid,async(s,call)=>{
       if(!s.calendar)return {connected:false,checked:0};
       await call('/calendars/'+encodeURIComponent(s.calendar.id));

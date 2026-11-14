@@ -8,8 +8,16 @@ export function calendarPayloads(uid,row,origin) {
   for(const [i,event] of events.entries()) {
     const index=indices[i];
     if(row.deleted_indices?.includes(index))continue;
+    const payload=calendarEventPayload(uid,row,event,index,reviewed,origin);
+    if(!payload){blocked.push(index);continue;}
+    payloads.push(payload);
+  }
+  return {payloads,blocked,reviewed};
+}
+// Shared by publishing and the read-only operator view so eligibility stays identical.
+export function calendarEventPayload(uid,row,event,index,reviewed,origin) {
     if(!Number.isInteger(index)||index<0||index>99)throw new AppError('일정 연결 정보를 확인하세요.');
-    if(!validDate(event.start_date)){blocked.push(index);continue;}
+    if(!validDate(event.start_date))return null;
     const value={...event};let provisional=false;
     if(!reviewed){
       value.title='(검토 필요) '+event.title.replace(/^\(검토 필요\)\s*/, '');
@@ -25,7 +33,5 @@ export function calendarPayloads(uid,row,origin) {
       payload.description,`모아에서 검토: ${origin}/?analysis=${row.id}`].filter(Boolean).join('\n\n');
     payload.extendedProperties.private.moaReview=reviewed?'complete':'required';
     // Drafts never send reminders or invitations.
-    payload.reminders={useDefault:false};payloads.push(payload);
-  }
-  return {payloads,blocked,reviewed};
+    payload.reminders={useDefault:false};return payload;
 }

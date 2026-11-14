@@ -1,0 +1,9 @@
+<section data-page="members" hidden>
+  <div class="page-heading"><div><p class="eyebrow">OPERATOR</p><h1>회원 일정<span class="title-dot">.</span></h1><p>웹 일정과 Google 반영 상태를 조회합니다.</p></div><span class="tag">읽기 전용</span></div>
+  <div class="member-controls"><label for="schedule-member">회원 선택<select id="schedule-member"><option value="">회원을 선택하세요</option></select></label><button id="schedule-members-more" class="secondary" hidden>회원 더 보기</button><button id="schedule-member-refresh" class="secondary" disabled>새로고침</button></div>
+  <p id="schedule-admin-status" role="status" aria-live="polite"></p><p id="schedule-member-connection" class="small"></p>
+  <div class="member-schedule-tools" hidden><label class="search"><span aria-hidden="true">⌕</span><input id="schedule-admin-search" type="search" placeholder="제목·구독 계정 검색" aria-label="회원 일정 검색"></label><label for="schedule-admin-filter">표시할 일정<select id="schedule-admin-filter"><option value="all">전체 상태</option><option value="eligible">Google 등록 대상</option><option value="excluded">자동 등록 제외</option><option value="removed">삭제·검토 제외</option></select></label><button id="schedule-google-page" class="secondary">표시된 일정 Google 확인</button></div>
+  <p id="schedule-admin-summary"></p><p id="schedule-google-progress" role="status" aria-live="polite"></p>
+  <p class="small">‘저장 기록’은 앱의 처리 기록입니다. ‘Google 확인’을 누르면 해당 일정의 현재 존재 여부를 조회합니다. 휴대폰 앱의 표시 여부는 확인하지 않습니다. 한 번에 최대 20건을 조회합니다.</p>
+  <div id="member-schedules"></div><button id="schedule-events-more" class="secondary" hidden>일정 더 보기</button>
+</section>

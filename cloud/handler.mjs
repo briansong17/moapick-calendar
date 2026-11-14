@@ -15,6 +15,7 @@ import {createSync} from './sync.mjs';
 import {calendarPayloads} from './calendar-payload.mjs';
 import {createServerWorker} from './server-worker.mjs';
 import {memberAnalysisBucket} from './time.mjs';
+import {memberScheduleAdmin,createMemberSchedules,memberId,pageNumber} from './member-schedules.mjs';
 async function readBody(req){let raw='',size=0;if(req.body!==undefined){raw=typeof req.body==='string'?req.body:JSON.stringify(req.body);size=Buffer.byteLength(raw);}else for await(const c of req){size+=c.length;if(size>4*1024*1024)throw new AppError('요청이 너무 큽니다. 배포판은 합계 3MB 이하 이미지를 사용하세요.',413);raw+=c;}if(size>4*1024*1024)throw new AppError('요청이 너무 큽니다.',413);try{return JSON.parse(raw);}catch{throw new AppError('JSON 입력을 확인하세요.');}}
 export function createHandler(env,{db=createSupabase(env),crypto=cipher(env.TOKEN_ENCRYPTION_KEY),collection,scheduleBackground}={}){
   const logDb=db;
@@ -24,6 +25,7 @@ export function createHandler(env,{db=createSupabase(env),crypto=cipher(env.TOKE
   const collect=collection??createCollection({db,env,onComplete:row=>sync.enqueueAnalysis(row)}),google=createCloudGoogle({db,crypto,env,locked:collect.locked});
   sync=createSync({db,env,collection:collect,google});
   const worker=createServerWorker({db:logDb,sync,collection:collect,env});
+  const memberSchedules=createMemberSchedules({db,google,env});
   const testers=createTestUsers({db,collection:collect,dailyLimit:Number(env.DAILY_ANALYSIS_LIMIT||100),createScoped:(scoped,scope)=>createCollection({db:scoped,env,scope,onComplete:row=>sync.enqueueAnalysis(row)})});
   return async(req,res)=>tracedRequest(async()=>{
     let logUid=null,logPath='other';const requestStarted=Date.now();
@@ -50,9 +52,19 @@ export function createHandler(env,{db=createSupabase(env),crypto=cipher(env.TOKE
       }
       if(path==='/api/auth/logout'&&req.method==='POST'){await auth.logout(req,res);return send(200,{ok:true});}
       trace('session.check');const s=await auth.session(req);trace('session.checked',{connected:!!s});logUid=s?.user.id??null;
-      if(path==='/api/auth/me'&&req.method==='GET')return send(200,{user:s?{...s.user,operations:operationalAdmin(env,s.user.id)}:null,setup:false});
+      if(path==='/api/auth/me'&&req.method==='GET')return send(200,{user:s?{...s.user,operations:operationalAdmin(env,s.user.id),memberSchedules:memberScheduleAdmin(env,s.user.id)}:null,setup:false});
       if(!s)throw new AppError('Google 계정으로 로그인해 주세요.',401);
       const uid=s.user.id;
+      if(path.startsWith('/api/admin/')){
+        if(!memberScheduleAdmin(env,uid))throw new AppError('일정 조회 운영자 권한이 필요합니다.',403);
+        if(req.method!=='GET')throw new AppError('운영자 일정 화면은 조회만 가능합니다.',405);
+        const verification=path==='/api/admin/member-event-google';
+        if(!await db.rpc('moa_take_limit',{p_bucket:(verification?'admin-schedule-google:':'admin-schedule-read:')+uid,p_limit:verification?20:60,p_seconds:60}))throw new AppError('조회 요청이 많습니다. 잠시 후 다시 확인하세요.',429);
+        if(path==='/api/admin/members')return send(200,await memberSchedules.list(pageNumber(url.searchParams.get('page'))));
+        if(path==='/api/admin/member-events')return send(200,await memberSchedules.events(memberId(url.searchParams.get('member')),pageNumber(url.searchParams.get('offset'))));
+        if(verification){if(!url.searchParams.has('index'))throw new AppError('일정을 선택하세요.');return send(200,await memberSchedules.verify(memberId(url.searchParams.get('member')),memberId(url.searchParams.get('analysis')),pageNumber(url.searchParams.get('index'))));}
+        throw new AppError('페이지를 찾을 수 없습니다.',404);
+      }
       if(req.method==='POST'&&path!=='/api/device')await saveRequestLog(logDb,{uid,path,method:req.method,status:102,started:requestStarted,snapshot:traceSnapshot(),build:env.VERCEL_GIT_COMMIT_SHA,req,phase:'running'});
       if(path==='/api/device'&&req.method==='POST')return send(200,await saveDevice(logDb,uid,req,await readBody(req)));
       if(path==='/api/operations'&&req.method==='GET')return send(200,await operationsSnapshot(logDb,env,uid));

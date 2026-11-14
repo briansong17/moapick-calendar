@@ -41,6 +41,8 @@ js+='\n'+await readFile('cloud/event-management-ui.js','utf8');
 html=html.replace(/모아(?!픽)/g,'모아픽 캘린더').replace('<span>moa</span>','<span>MoaPick Calendar</span>').replace('<title>모아픽 캘린더 —','<title>모아픽 캘린더 · MoaPick Calendar —');
 js=js.replace(/모아(?!픽)/g,'모아픽 캘린더');
 html=await readFile('cloud/index.html','utf8');
+html=html.replace('<button data-view="diagnostics">','<button data-view="members" id="member-schedules-nav" hidden><span aria-hidden="true">▦</span>회원 일정</button><button data-view="diagnostics">');
+html=html.replace('<section data-page="testing"',await readFile('cloud/member-schedules.html','utf8')+'<section data-page="testing"');
 html=html.replace('아이폰 표시 완료','휴대폰 앱의 표시 완료').replaceAll('아이폰 캘린더 앱의 표시 완료','휴대폰 캘린더 앱의 표시 완료')
  .replace('Google 반영 확인은 서버 기록 중 최대 10개를 실제 Google에서 조회합니다.','Google 반영 확인은 서버의 등록·삭제 대상 중 최대 10개를 실제 Google에서 조회합니다.')
  .replace('아이폰에서는 같은 Google 계정과 ‘모아 · Instagram 일정’ 캘린더가 표시 대상으로 선택돼 있는지도 확인해 주세요.','휴대폰에서는 같은 Google 계정의 현재 연결된 캘린더가 표시 대상으로 선택돼 있는지도 확인해 주세요.')
@@ -55,19 +57,19 @@ js=js.replace("function render(row) {","function render(row) { openView('review'
 js=js.replace("$('auth-title').textContent=signedIn?","$('auth-panel').hidden=!!signedIn;$('member-email').textContent=signedIn?.login??'';$('settings-email').textContent=signedIn?.login??''; $('auth-title').textContent=signedIn?");
 // Instrument only the cloud bundle; keep the local application independent.
 const diagnosticUI=(await readFile('cloud/diagnostics-ui.js','utf8')).replace('__BUILD_ID__',process.env.VERCEL_GIT_COMMIT_SHA?.slice(0,12)||'local');
-js=await readFile('cloud/devices-ui.js','utf8')+'\n'+diagnosticUI+'\n'+await readFile('cloud/reconcile-ui.js','utf8')+'\n'+await readFile('cloud/test-users-ui.js','utf8')+'\n'+await readFile('cloud/review-link-ui.js','utf8')+'\n'+js;
+js=await readFile('cloud/member-schedules-ui.js','utf8')+'\n'+await readFile('cloud/devices-ui.js','utf8')+'\n'+diagnosticUI+'\n'+await readFile('cloud/reconcile-ui.js','utf8')+'\n'+await readFile('cloud/test-users-ui.js','utf8')+'\n'+await readFile('cloud/review-link-ui.js','utf8')+'\n'+js;
 if(!js.includes('await openRequestedAnalysis();'))throw new Error('Cloud review link hook is missing');
 // Preserve test collection eligibility in the manual action instead of reporting a skipped request as complete.
 js=js.replace("await api('/api/meta/poll', { username: a.username });", "const collectionResponse=await api('/api/meta/poll', { username: a.username });")
  .replace("return '수집이 끝났습니다. 처리 기록과 분석 결과를 확인하세요.';", "return collectionResponse.collectionResult?collectionResultMessage(collectionResponse.collectionResult):'수집이 끝났습니다. 처리 기록과 분석 결과를 확인하세요.';");
 js=js.replace(/async function api\(path, data\) \{[\s\S]*?\n\}/, 'async function api(path,data){return diagnosticApi(path,data);}');
 js=js.replace("function message(text) { $('message').textContent = text; }", "function message(text) { $('message').textContent=text;diagnosticNotice(text); }");
-js=js.replace("signedIn=state.user;", "signedIn=state.user;diagnosticBind(signedIn);if(signedIn)queueMicrotask(async()=>{await testVisit();void reconcileCalendar(true);});");
+js=js.replace("signedIn=state.user;", "signedIn=state.user;diagnosticBind(signedIn);bindMemberSchedules(signedIn);if(signedIn)queueMicrotask(async()=>{await testVisit();void reconcileCalendar(true);});");
 js=js.replace("previewUrls.forEach(URL.revokeObjectURL);", "diagnosticLog('image.selected',{count:$('images').files.length,bytes:[...$('images').files].reduce((n,f)=>n+f.size,0)});previewUrls.forEach(URL.revokeObjectURL);");
 js=js.replace("const readImage = file => new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(r.result); r.onerror = () => reject(new Error('이미지를 읽지 못했습니다.')); r.readAsDataURL(file); });", "const readImage = file => new Promise((resolve,reject)=>{diagnosticLog('image.read.start',{bytes:file.size});const r=new FileReader();r.onload=()=>{diagnosticLog('image.read.complete',{bytes:file.size});resolve(r.result);};r.onerror=r.onabort=()=>{diagnosticLog('image.read.failed');reject(new Error('이미지를 읽지 못했습니다.'));};r.readAsDataURL(file);});");
 js=js.replace("await Promise.all([status(), history()]).catch(() => {});", "await Promise.all([status(),history(),loadManagedEvents()]).catch(()=>{});");
 js=js.replace("message(r.reused ?", "message(r.pending ? 'Google 반영 대기 중입니다. 진행상황에서 확인해 주세요.' : r.blocked?.length ? '날짜가 없는 일정은 등록 대기입니다. 진행상황에서 확인해 주세요.' : r.reused ?");
 js=js.replace("$('settings-status').textContent=text;","$('settings-status').textContent=text;diagnosticNotice(text);");
-js+='\nsetupDiagnostics();setupReconciliation();setupTestUsers();setupDevices();';
+js+='\nsetupDiagnostics();setupReconciliation();setupTestUsers();setupDevices();setupMemberSchedules();';
 await writeFile('dist/index.html',html);await writeFile('dist/app.js',js);await copyFile('cloud/style.css','dist/style.css');
 await buildPolicies();
