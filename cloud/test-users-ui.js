@@ -2,6 +2,7 @@ let testMode=false,testVisitBusy=false;
 function collectionResultMessage(result){
  if(result.processed)return '게시물 1개를 확인했습니다.';
  if(result.reason==='no_enabled_subscription')return '활성 구독이 없어 수집하지 않았습니다.';
+ if(result.reason==='no_posts')return '이번 페이지에 처리할 게시물이 없어 다음 확인 시각까지 대기합니다.';
  const deferred=result.deferred??[],next=deferred.map(a=>Date.parse(a.nextDue)).filter(Number.isFinite).sort((a,b)=>a-b)[0];
  return (deferred.some(a=>a.failed)?'이전 수집 오류로 대기 중입니다. 진행상황에서 원인을 확인하세요.':'수집 예정 시각 전이라 이번 요청에서는 수집하지 않았습니다.')+(next?' 다음 확인: '+new Date(next).toLocaleString('ko-KR'): '');
 }

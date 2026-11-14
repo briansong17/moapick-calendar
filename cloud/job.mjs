@@ -12,7 +12,7 @@ export async function runCollectionJob({db,collection,now=new Date()}) {
       await db.admin('moa_accounts',{username:`eq.${account.username}`},{method:'PATCH',body:{next_due:new Date(now.getTime()+3600000).toISOString()}});
       continue;
     }
-    try {await collection.poll(account.username);return {processed:true};}
+    try {const result=await collection.poll(account.username);if(result?.processed===false)continue;return {processed:true};}
     catch(error){if([401,409,429].includes(error.status))return {processed:false,deferred:true};throw error;}
   }
   if(collection.runTest){const users=await db.admin('moa_preferences',{test_user:'eq.true',limit:'100'});for(const user of users){try{const r=await collection.runTest(user.user_id);if(r.processed)return r;}catch(e){if(![401,409,429].includes(e.status))throw e;}}}

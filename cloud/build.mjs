@@ -31,7 +31,7 @@ js=js.replace('card.dataset.index = index;', 'card.dataset.index = index; card.d
  .replace("$('confirmed').parentElement.hidden = !events.length;", "$('confirmed').parentElement.hidden = false;")
  .replace("render(row); message('확인한 일정을 저장했습니다. 캘린더 파일로 내려받을 수 있습니다.');", "render(row); message(row.sync?.pending ? '검토는 저장됐습니다. 캘린더 반영 대기: '+row.sync.error : '검토를 저장하고 캘린더를 갱신했습니다.');")
  .replace("b.onclick = () => { if (row.result) render(row);", "b.onclick = async () => { if (row.result) render(await api('/api/analyses/'+row.id));")
- .replace("if(signedIn)await Promise.all([status(),history(),connections()]);", "if(signedIn){await Promise.all([status(),history(),connections()]);const id=new URLSearchParams(location.search).get('analysis');if(id&&/^[a-f0-9-]{36}$/.test(id)){render(await api('/api/analyses/'+id));$('results').scrollIntoView();}}")
+ .replace("if(signedIn)await Promise.all([status(),history(),connections()]);", "if(signedIn){await Promise.all([status(),history(),connections()]);await openRequestedAnalysis();}")
  .replace("'원문과 비교하고 필요한 정보를 수정해 주세요.'", "'원문과 비교하고 필요한 정보를 수정해 주세요. 캘린더에는 (검토 필요)로 임시 표시합니다. 날짜 없는 후보는 등록 대기입니다.'");
 js=js.replace("}\n$('images').onchange", "if(row.sync?.error) message('캘린더 반영 대기: '+row.sync.error);\n}\n$('images').onchange");
 html=html.replace('<div id="member-content" hidden>',`<div id="member-content" hidden><section class="panel" id="event-management"><h2>내 일정 관리</h2><p>개별·선택·전체 삭제는 내 일정에만 적용됩니다. 삭제한 일정은 자동으로 다시 등록하지 않습니다. 원본 게시물과 다른 회원의 일정은 유지됩니다.</p><p id="event-count"></p><div class="actions"><label><input type="checkbox" id="events-select-all" style="width:auto">전체 선택</label><button id="events-delete-selected" class="secondary">선택 삭제</button><button id="events-delete-all" class="secondary">전체 삭제</button><button id="events-reload" class="text-button">목록 새로고침</button></div><p id="event-status" role="status" aria-live="polite"></p><div id="managed-events"></div></section>`);
@@ -55,7 +55,8 @@ js=js.replace("function render(row) {","function render(row) { openView('review'
 js=js.replace("$('auth-title').textContent=signedIn?","$('auth-panel').hidden=!!signedIn;$('member-email').textContent=signedIn?.login??'';$('settings-email').textContent=signedIn?.login??''; $('auth-title').textContent=signedIn?");
 // Instrument only the cloud bundle; keep the local application independent.
 const diagnosticUI=(await readFile('cloud/diagnostics-ui.js','utf8')).replace('__BUILD_ID__',process.env.VERCEL_GIT_COMMIT_SHA?.slice(0,12)||'local');
-js=await readFile('cloud/devices-ui.js','utf8')+'\n'+diagnosticUI+'\n'+await readFile('cloud/reconcile-ui.js','utf8')+'\n'+await readFile('cloud/test-users-ui.js','utf8')+'\n'+js;
+js=await readFile('cloud/devices-ui.js','utf8')+'\n'+diagnosticUI+'\n'+await readFile('cloud/reconcile-ui.js','utf8')+'\n'+await readFile('cloud/test-users-ui.js','utf8')+'\n'+await readFile('cloud/review-link-ui.js','utf8')+'\n'+js;
+if(!js.includes('await openRequestedAnalysis();'))throw new Error('Cloud review link hook is missing');
 // Preserve test collection eligibility in the manual action instead of reporting a skipped request as complete.
 js=js.replace("await api('/api/meta/poll', { username: a.username });", "const collectionResponse=await api('/api/meta/poll', { username: a.username });")
  .replace("return '수집이 끝났습니다. 처리 기록과 분석 결과를 확인하세요.';", "return collectionResponse.collectionResult?collectionResultMessage(collectionResponse.collectionResult):'수집이 끝났습니다. 처리 기록과 분석 결과를 확인하세요.';");

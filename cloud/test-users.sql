@@ -25,7 +25,7 @@ begin
  update public.moa_preferences set history_reset_at=now(),generation=gen_random_uuid() where user_id=p_user;
  delete from public.moa_test_posts where user_id=p_user;
  delete from public.moa_test_accounts where user_id=p_user;
- delete from public.moa_sync_jobs where user_id=p_user;
+ -- Calendar work is independent of analysis-history visibility and must survive reset.
 end $$;
 revoke all on function public.moa_reset_test_history(uuid) from public,anon,authenticated;
 grant execute on function public.moa_reset_test_history(uuid) to service_role;

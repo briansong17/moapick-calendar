@@ -14,6 +14,7 @@ import {createCloudGoogle} from './google.mjs';
 import {createSync} from './sync.mjs';
 import {calendarPayloads} from './calendar-payload.mjs';
 import {createServerWorker} from './server-worker.mjs';
+import {memberAnalysisBucket} from './time.mjs';
 async function readBody(req){let raw='',size=0;if(req.body!==undefined){raw=typeof req.body==='string'?req.body:JSON.stringify(req.body);size=Buffer.byteLength(raw);}else for await(const c of req){size+=c.length;if(size>4*1024*1024)throw new AppError('요청이 너무 큽니다. 배포판은 합계 3MB 이하 이미지를 사용하세요.',413);raw+=c;}if(size>4*1024*1024)throw new AppError('요청이 너무 큽니다.',413);try{return JSON.parse(raw);}catch{throw new AppError('JSON 입력을 확인하세요.');}}
 export function createHandler(env,{db=createSupabase(env),crypto=cipher(env.TOKEN_ENCRYPTION_KEY),collection,scheduleBackground}={}){
   const logDb=db;
@@ -104,7 +105,7 @@ export function createHandler(env,{db=createSupabase(env),crypto=cipher(env.TOKE
       if(['/api/meta/enable','/api/meta/unsubscribe','/api/meta/poll'].includes(path)&&req.method==='POST'){
         const input=await readBody(req),name=accountName(input.username);await requireSubscription(name);
         let collectionResult;
-        if(path.endsWith('/poll')){if((await preferences(db,uid)).test_user)collectionResult=await testers.run(uid,{username:name});else await collect.poll(name);await sync.reconcile(uid,{begin:false});}
+        if(path.endsWith('/poll')){if((await preferences(db,uid)).test_user)collectionResult=await testers.run(uid,{username:name});else collectionResult=await collect.poll(name);await sync.reconcile(uid,{begin:false});}
         else if(path.endsWith('/unsubscribe'))await db.admin('moa_subscriptions',{user_id:`eq.${uid}`,username:`eq.${name}`},{method:'DELETE'});
         else{if(typeof input.enabled!=='boolean')throw new AppError('설정값을 확인하세요.');await db.admin('moa_subscriptions',{user_id:`eq.${uid}`,username:`eq.${name}`},{method:'PATCH',body:{enabled:input.enabled}});}
         return send(200,{...await collectorStatus(),...(collectionResult?{collectionResult}:{})});
@@ -141,7 +142,7 @@ export function createHandler(env,{db=createSupabase(env),crypto=cipher(env.TOKE
         return send(200,rows.map(r=>({...r,reviewed:reviews.find(v=>v.analysis_id===r.id)?.events??null,source_indices:reviews.find(v=>v.analysis_id===r.id)?.source_indices??null})));
       }
       const match=/^\/api\/analyses\/([a-f0-9-]+)(\/review|\/google|\/calendar.ics)?$/.exec(path);
-      if(match){const row=await visible(match[1]);
+      if(match){const row=await visible(match[1],true);
         if(req.method==='GET'&&!match[2]){const jobs=await db.read('moa_sync_jobs',{analysis_id:`eq.${row.id}`},s.token);return send(200,{...row,sync:jobs[0]??null});}
         if(req.method==='GET'&&match[2]==='/calendar.ics'){if(!row.reviewed)throw new AppError('검토 후 저장하세요.');res.setHeader('Content-Disposition','attachment; filename="events.ics"');return send(200,calendar({...row,reviewed:eventEntries(row).map(e=>e.event)}),'text/calendar; charset=utf-8');}
         if(req.method==='POST'&&match[2]==='/review'){const input=await readBody(req);if(input.confirmed!==true||row.status!=='complete')throw new AppError('완료된 분석을 원문과 비교하고 확인해 주세요.');
@@ -154,7 +155,7 @@ export function createHandler(env,{db=createSupabase(env),crypto=cipher(env.TOKE
         if(req.method==='POST'&&match[2]==='/google'){if((await readBody(req)).confirmed!==true)throw new AppError('등록 확인이 필요합니다.');await sync.enqueue(uid,row.id);return send(200,await sync.one(uid,row.id));}
       }
       if(path==='/api/analyze'&&req.method==='POST'){
-        if(!await db.rpc('moa_take_limit',{p_bucket:'user-analysis:'+uid+':'+new Date().toISOString().slice(0,10),p_limit:Number(env.DAILY_ANALYSIS_LIMIT||100),p_seconds:86400}))throw new AppError('회원별 일일 분석 한도에 도달했습니다.',429);
+        if(!await db.rpc('moa_take_limit',{p_bucket:memberAnalysisBucket(uid),p_limit:Number(env.DAILY_ANALYSIS_LIMIT||100),p_seconds:86400}))throw new AppError('회원별 일일 분석 한도에 도달했습니다.',429);
         trace('input.read');const input=await readBody(req);trace('analysis.start');const row=await collect.analyzeInput(input,uid);trace('analysis.complete',{analysisId:row.id,count:row.result?.events?.length??0});await sync.enqueue(uid,row.id);const result=await sync.one(uid,row.id);return send(200,{...row,reviewed:null,sync:result});
       }
       throw new AppError('페이지를 찾을 수 없습니다.',404);

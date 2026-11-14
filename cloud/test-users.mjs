@@ -1,5 +1,6 @@
 import {AppError} from '../lib/extraction.mjs';
 import {trace} from './diagnostics.mjs';
+import {koreanDay} from './time.mjs';
 export async function preferences(db,uid){return (await db.admin('moa_preferences',{user_id:`eq.${uid}`,limit:'1'}))[0]??{test_user:false,history_reset_at:null};}
 export function historyQuery(pref){return pref.history_reset_at?{created_at:`gte.${pref.history_reset_at}`}:{ };}
 // Keep shared posts and account cursors intact. All mutations in this view are scoped.
@@ -22,13 +23,15 @@ export function createTestUsers({db,collection,createScoped,dailyLimit=100}){
    if(account.phase==='paused')continue;
    if(Date.parse(account.next_due)>now.getTime()){
     let quotaRecovered=false;
-    if(account.error==='오늘의 분석 한도에 도달했습니다.'){const day=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Seoul',year:'numeric',month:'2-digit',day:'2-digit'}).format(now);const [counter]=await db.admin('moa_limits',{bucket:`eq.analysis:${day}`,select:'count'});quotaRecovered=(counter?.count??0)<dailyLimit;}
+    if(account.error==='오늘의 분석 한도에 도달했습니다.'){const [counter]=await db.admin('moa_limits',{bucket:`eq.analysis:${koreanDay(now)}`,select:'count'});quotaRecovered=(counter?.count??0)<dailyLimit;}
     if(account.error==='OpenAI 호출 제한에 도달했습니다. 잠시 후 다시 시도하세요.'){const [failed]=await db.admin('moa_analyses',{owner_id:`eq.${uid}`,status:'eq.failed',select:'created_at,usage',order:'created_at.desc',limit:'1'});if(failed&&!failed.usage?.failure&&now.getTime()-Date.parse(failed.created_at)>=60000)quotaRecovered=true;}
     if(!quotaRecovered){skipped.push({nextDue:account.next_due,failed:!!account.error});continue;}
    }
-   trace('test.collect.start');await createScoped(scoped,{uid,generation:pref.generation}).poll(sub.username);trace('test.collect.complete',{count:1});return {processed:true,count:1};
+   trace('test.collect.start');const result=await createScoped(scoped,{uid,generation:pref.generation}).poll(sub.username);trace('test.collect.complete',{count:result?.processed===false?0:1});
+   if(result?.processed===false){const [fresh]=await scoped.admin('moa_accounts',{username:`eq.${sub.username}`});skipped.push({reason:'no_posts',nextDue:fresh?.next_due,failed:false});continue;}
+   return {processed:true,count:1};
   }
-  trace('test.collect.skipped',{code:subs.length?'not_due':'no_enabled_subscription',blocked:skipped.filter(a=>a.failed).length});return {processed:false,count:0,reason:subs.length?'not_due':'no_enabled_subscription',deferred:skipped};
+  const reason=!subs.length?'no_enabled_subscription':skipped.some(a=>a.reason==='no_posts')?'no_posts':'not_due';trace('test.collect.skipped',{code:reason,blocked:skipped.filter(a=>a.failed).length});return {processed:false,count:0,reason,deferred:skipped};
  });}
  async function reset(uid,input){if(input.confirmation!=='분석 기록 초기화')throw new AppError('확인 문구를 입력해 주세요.');
   return collection.locked('test-user:'+uid,async()=>{const pref=await preferences(db,uid);if(!pref.test_user)throw new AppError('테스트 사용자를 먼저 선택하세요.',409);

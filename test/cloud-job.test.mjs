@@ -13,3 +13,9 @@ test('예약 수집은 만료된 보안 상태를 정리하고 비활성 계정�
   assert.equal(calls.filter(c=>c.options?.method==='DELETE').length,4);
   assert.equal(calls.find(c=>c.options?.method==='PATCH').query.username,'eq.disabled');
 });
+
+test('an empty first account does not prevent another due account from processing its one post',async()=>{
+ const polled=[];const db={admin:async(table,q,o)=>o?[]:table==='moa_accounts'?[{username:'empty'},{username:'school'}]:table==='moa_subscriptions'?[{user_id:'owner'}]:[]};
+ const result=await runCollectionJob({db,collection:{poll:async name=>{polled.push(name);return {processed:name!=='empty'};}}});
+ assert.deepEqual(polled,['empty','school']);assert.equal(result.processed,true);
+});

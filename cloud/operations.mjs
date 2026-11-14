@@ -22,6 +22,6 @@ export async function operationsSnapshot(db,env,uid){
  return {scope:own?'self':'operations',at:new Date().toISOString(),devices:devices.map(({device_id,...r})=>({...r,device:alias(device_id)})),requests:requests.map(({device_id,id,...r})=>({...r,device:alias(device_id)}))};
 }
 export async function collectionSnapshot(db,uid,pref,token){
- const accounts=await db.read(pref.test_user?'moa_test_accounts':'moa_accounts',{},token);
- return accounts.map(a=>({phase:a.phase,lastChecked:a.last_checked,nextDue:a.next_due,processed:a.processed,failed:!!a.error,failureCode:diagnosticFailureCode(a.error)}));
+ const subs=await db.read('moa_subscriptions',{},token),accounts=await db.read(pref.test_user?'moa_test_accounts':'moa_accounts',{},token);
+ return subs.map(sub=>{const a=accounts.find(a=>a.username===sub.username)??{};return {enabled:sub.enabled,phase:a.phase??'initial',lastChecked:a.last_checked??null,nextDue:sub.enabled?a.next_due??null:null,processed:a.processed??0,failed:!!sub.enabled&&!!a.error,failureCode:sub.enabled?diagnosticFailureCode(a.error):null};});
 }

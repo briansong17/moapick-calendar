@@ -1,3 +1,4 @@
+function eventOnDate(event,date){return !!event.start_date&&event.start_date<=date&&(event.end_date??event.start_date)>=date;}
 async function confirmEventDeletion(count){
  const dialog=document.createElement('dialog'),title=el('h2','일정 삭제 확인'),text=el('p',count+'개 일정을 삭제할까요? 모아픽에서 숨기고 이 앱이 등록한 Google 일정도 삭제합니다. 되돌리기 기능은 없습니다.'),cancel=el('button','취소','secondary'),remove=el('button','삭제 확인','primary');
  dialog.append(title,text,cancel,remove);document.body.append(dialog);dialog.showModal();
@@ -14,7 +15,7 @@ let eventFilter='all',eventSearch='',eventDate='';
 let calendarMonth=new Date(new Date().getFullYear(),new Date().getMonth(),1);
 function renderManagedEvents(){
  $('managed-events').replaceChildren();const all=[...managedEvents.values()];
- const items=all.filter(i=>(eventFilter==='all'||(eventFilter==='reviewed')===i.reviewed)&&i.event.title.toLowerCase().includes(eventSearch)&&(!eventDate||i.event.start_date===eventDate)).sort((a,b)=>{const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Seoul',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());const rank=i=>!i.event.start_date?2:(i.event.end_date??i.event.start_date)<today?1:0;return rank(a)-rank(b)||(a.event.start_date??'9999').localeCompare(b.event.start_date??'9999');});
+ const items=all.filter(i=>(eventFilter==='all'||(eventFilter==='reviewed')===i.reviewed)&&i.event.title.toLowerCase().includes(eventSearch)&&(!eventDate||eventOnDate(i.event,eventDate))).sort((a,b)=>{const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Seoul',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());const rank=i=>!i.event.start_date?2:(i.event.end_date??i.event.start_date)<today?1:0;return rank(a)-rank(b)||(a.event.start_date??'9999').localeCompare(b.event.start_date??'9999');});
  for(const item of items){const key=eventKey(item),card=el('div',undefined,'managed-row');
  const check=el('input');check.type='checkbox';check.dataset.eventKey=key;check.setAttribute('aria-label',item.event.title+' 선택');
  const date=el('div',item.event.start_date?.slice(8)??'—','date-tile');date.append(el('small',item.event.start_date?Number(item.event.start_date.slice(5,7))+'월':'날짜 미정'));
@@ -31,7 +32,7 @@ function renderMiniCalendar(){
  const year=calendarMonth.getFullYear(),month=calendarMonth.getMonth();$('month-title').textContent=year+'년 '+(month+1)+'월';$('mini-calendar').replaceChildren();
  const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Seoul',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
  for(let i=0;i<new Date(year,month,1).getDay();i++)$('mini-calendar').append(el('span'));
- for(let day=1;day<=new Date(year,month+1,0).getDate();day++){const key=year+'-'+String(month+1).padStart(2,'0')+'-'+String(day).padStart(2,'0'),b=el('button',String(day));b.setAttribute('aria-label',key+' 일정 보기');if(key===today)b.classList.add('today');if(key===eventDate)b.classList.add('selected');if([...managedEvents.values()].some(i=>i.event.start_date===key))b.classList.add('has-events');b.onclick=()=>{eventDate=key;$('clear-date').hidden=false;renderManagedEvents();renderMiniCalendar();};$('mini-calendar').append(b);}
+ for(let day=1;day<=new Date(year,month+1,0).getDate();day++){const key=year+'-'+String(month+1).padStart(2,'0')+'-'+String(day).padStart(2,'0'),b=el('button',String(day));b.setAttribute('aria-label',key+' 일정 보기');if(key===today)b.classList.add('today');if(key===eventDate)b.classList.add('selected');if([...managedEvents.values()].some(i=>eventOnDate(i.event,key)))b.classList.add('has-events');b.onclick=()=>{eventDate=key;$('clear-date').hidden=false;renderManagedEvents();renderMiniCalendar();};$('mini-calendar').append(b);}
 }
 
 async function deleteManaged(keys){

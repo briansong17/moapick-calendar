@@ -6,6 +6,16 @@ import {createHandler} from '../cloud/handler.mjs';
 import {cipher,digest} from '../cloud/security.mjs';
 import {createSupabase} from '../cloud/supabase.mjs';
 
+test('an unsubscribed shared analysis remains openable through this members own export, with no cross-member fallback',async()=>{
+ const crypto=cipher(randomBytes(32).toString('base64')),sid='e'.repeat(64),uid='11111111-1111-4111-8111-111111111111',id='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';let ownExport=true,adminReads=0;
+ const db={rpc:async()=>true,auth:async()=>({id:uid,email:'test@example.test',email_confirmed_at:'yes'}),
+  read:async table=>table==='moa_exports'&&ownExport?[{analysis_id:id}]:[],
+  admin:async(table)=>{if(table==='moa_sessions')return [{user_id:uid,encrypted:crypto.seal({access_token:'token',expires_at:Date.now()/1000+3600},'session:'+digest(sid))}];if(table==='moa_analyses'){adminReads++;return [{id,owner_id:null,status:'complete',metadata:{},result:{events:[]}}];}return [];}};
+ const handler=createHandler({PUBLIC_ORIGIN:'https://moa.example',SUPABASE_URL:'https://test.supabase.co'},{db,crypto,collection:{locked:async(_,fn)=>fn()}});
+ const request=async()=>{let status,value;const req=Readable.from([]);Object.assign(req,{url:'/api/analyses/'+id,method:'GET',headers:{host:'moa.example',cookie:'__Host-moa='+sid}});await handler(req,{setHeader(){},writeHead(s){status=s;},end(body){value=JSON.parse(body);}});return {status,value};};
+ assert.equal((await request()).status,200);assert.equal(adminReads,1);ownExport=false;assert.equal((await request()).status,404);assert.equal(adminReads,1);
+});
+
 test('manual test collection returns the actual skipped outcome instead of implying that a post was processed',async()=>{
  const crypto=cipher(randomBytes(32).toString('base64')),sid='d'.repeat(64),uid='11111111-1111-4111-8111-111111111111';
  const account={username:'school',phase:'initial',processed:0,next_due:'2099-01-01T00:00:00Z'};

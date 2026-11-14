@@ -21,3 +21,8 @@ test('request lifecycle uses the same ID for running and completion and redacts 
 test('diagnostics select the test cursor table rather than the normal shared table',async()=>{
  let table;await collectionSnapshot({read:async t=>{table=t;return [];}},'member',{test_user:true},'token');assert.equal(table,'moa_test_accounts');
 });
+
+test('collection diagnostics exclude unsubscribed cursors and distinguish disabled subscriptions',async()=>{
+ const db={read:async table=>table==='moa_subscriptions'?[{username:'active',enabled:true},{username:'disabled',enabled:false}]:[{username:'active',phase:'initial',error:null},{username:'disabled',phase:'ready',error:'Meta API 접근이 차단됐습니다',next_due:'2099-01-01'},{username:'removed',phase:'initial',error:'old error'}]};
+ const rows=await collectionSnapshot(db,'member',{test_user:true},'token');assert.equal(rows.length,2);assert.equal(rows[0].enabled,true);assert.equal(rows[1].enabled,false);assert.equal(rows[1].failed,false);assert.equal(rows[1].nextDue,null);
+});

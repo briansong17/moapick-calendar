@@ -3,7 +3,7 @@ import {randomUUID} from 'node:crypto';
 import {AppError,validateInput,inputHash,extract} from '../lib/extraction.mjs';
 import {accountName,contentHash,createInstagram} from '../lib/instagram.mjs';
 import {pastBoundary} from '../lib/collector.mjs';
-const day=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Seoul',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+import {koreanDay as day} from './time.mjs';
 export function createCollection({db,env,analyze=extract,instagram,onComplete=async()=>{},scope=null}) {
   const model=env.OPENAI_MODEL||'gpt-5.4-mini';
   const config=env.META_TOKEN?{token:env.META_TOKEN,ig_id:env.META_IG_ID,version:env.META_API_VERSION||'v27.0',username:env.META_USERNAME}:null;
@@ -77,7 +77,7 @@ export function createCollection({db,env,analyze=extract,instagram,onComplete=as
           if(page.after&&(page.after===a.cursor||a.seen.includes(page.after)))throw new AppError('페이지 커서 반복으로 중단했습니다.',502);
           await update({queue:posts.filter(p=>/^\d+$/.test(p.id??'')).map(p=>p.id),next_cursor:page.after,seen:page.after?[...a.seen,page.after]:a.seen});
         }
-        if(!a.queue.length){await update(a.next_cursor?{cursor:a.next_cursor}:{phase:'ready',reason:'게시물 끝까지 확인',cursor:'',seen:[]});return;}
+        if(!a.queue.length){const checked=new Date();await update({...(a.next_cursor?{cursor:a.next_cursor}:{phase:'ready',reason:'게시물 끝까지 확인',cursor:'',seen:[],next_cursor:null}),error:null,last_checked:checked.toISOString(),next_due:new Date(checked.getTime()+(a.next_cursor?60000:3600000)).toISOString()});return {processed:false,count:0,reason:'no_posts'};}
         const id=a.queue[0],[p]=await db.admin('moa_posts',{id:`eq.${id}`});let result;
         const media=p.payload.media_type==='CAROUSEL_ALBUM'?p.payload.children?.data??[]:[p.payload];
         if(!media.length||media.length>20||media.some(x=>x.media_type!=='IMAGE'||!x.media_url)||p.payload.children?.paging?.next){
@@ -97,6 +97,7 @@ export function createCollection({db,env,analyze=extract,instagram,onComplete=as
         else if(!queue.length&&a.phase==='refresh'&&processed>=30)await update({phase:'ready',queue,cursor:'',seen:[],processed,reason:'최근 30개 확인'});
         else await update({queue,processed,...(!queue.length?{cursor:a.next_cursor}:{})});
         await update({error:null,last_checked:new Date().toISOString(),next_due:new Date(Date.now()+(a.phase==='initial'?60000:3600000)).toISOString()});
+        return {processed:true,count:1};
       }catch(e){await update({error:e instanceof AppError?e.message:'수집 실패',next_due:new Date(Date.now()+(e.status===429&&e.retryAfterSeconds?e.retryAfterSeconds*1000:3600000)).toISOString()});throw e;}
     });
   }

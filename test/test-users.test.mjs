@@ -24,6 +24,13 @@ test('a newly created test account is due on its first attempt even when the dat
  tables.moa_test_accounts[0].next_due='2099-01-01';tables.moa_subscriptions[1].enabled=false;
  assert.equal((await testers.run('owner')).processed,false);assert.equal(calls,1);
 });
+
+test('an empty account is checked and deferred without claiming a processed post or consuming AI',async()=>{
+ const {db,tables}=fixture();tables.moa_subscriptions[1].enabled=false;let analyzed=0;
+ const testers=createTestUsers({db,collection:{locked:async(_,fn)=>fn()},createScoped:(scoped,scope)=>createCollection({db:scoped,scope,env:{OPENAI_API_KEY:'fake'},instagram:{page:async()=>({posts:[],after:null})},analyze:async()=>{analyzed++;}})});
+ const result=await testers.run('owner');assert.equal(result.processed,false);assert.equal(result.reason,'no_posts');assert.equal(analyzed,0);
+ const account=tables.moa_test_accounts[0];assert.equal(account.phase,'ready');assert.ok(Date.parse(account.next_due)>Date.now());assert.ok(account.last_checked);
+});
 test('test collection processes at most one post across subscriptions, preserves other users and skips not due/disabled',async()=>{
  const {db,tables}=fixture();let analyzed=0,pages=0;
  const ig={page:async()=>{pages++;return {after:null,posts:[{id:'1',media_type:'IMAGE',media_url:'url',timestamp:'2026-11-13T10:00:00Z'},{id:'2',media_type:'IMAGE',media_url:'url',timestamp:'2026-11-12T10:00:00Z'}]};},download:async()=>image};
