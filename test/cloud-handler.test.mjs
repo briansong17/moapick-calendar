@@ -39,6 +39,8 @@ test('배포 API는 서버 검증한 회원만 사용하며 RLS에 사용자 토
  assert.deepEqual(readTokens,['verified-user-token','verified-user-token']);
  assert.equal((await req('/api/analyses/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/review',{cookie:'__Host-moa='+sessionId,body:{confirmed:true,events:[]}})).status,404);
  assert.equal((await req('/api/diagnostics')).status,401);
+ assert.equal((await req('/api/sync/status')).status,401);
+ const syncStatus=await req('/api/sync/status',{cookie:'__Host-moa='+sessionId});assert.equal(syncStatus.status,200);assert.equal(syncStatus.value.pending,false);
  const diagnostic=await req('/api/diagnostics',{cookie:'__Host-moa='+sessionId});assert.equal(diagnostic.status,200);assert.deepEqual(diagnostic.value.jobs,[]);assert.deepEqual(diagnostic.value.analyses,[]);assert.doesNotMatch(JSON.stringify(diagnostic.value),/verified-user-token|fixture@example/);
  assert.equal(writes,0);
  assert.equal((await req('/api/auth/google',{body:{},origin:'https://evil.example'})).status,403);
@@ -64,9 +66,9 @@ test('삭제 API는 다른 회원 기록을 거절하고 본인 선택만 저장
   if(name==='moa_sync_jobs'){if(o?.method==='POST')job={...o.body,attempts:0};if(o?.method==='PATCH')Object.assign(job,o.body);return job?[job]:[];}
   return [];
  }};
- const h=createHandler({PUBLIC_ORIGIN:'https://moa.example',SUPABASE_URL:'https://test.supabase.co'},{db,crypto,collection:{locked:async(_,fn)=>fn()}});
+ const tasks=[];const h=createHandler({PUBLIC_ORIGIN:'https://moa.example',SUPABASE_URL:'https://test.supabase.co'},{db,crypto,scheduleBackground:task=>tasks.push(task),collection:{locked:async(_,fn)=>fn()}});
  const request=async target=>{let result;const req=Readable.from([]);Object.assign(req,{url:'/api/analyses/'+target+'/delete-events',method:'POST',body:{indices:[1],confirmed:true},headers:{host:'moa.example',origin:'https://moa.example','content-type':'application/json',cookie:'__Host-moa='+sid}});await h(req,{setHeader(){},writeHead(s){result={status:s};},end(v){result.value=JSON.parse(v);}});return result;};
  assert.equal((await request('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb')).status,404);assert.equal(tombstones.length,0);
- const result=await request(id);assert.equal(result.status,200);assert.equal(result.value.sync.pending,true);assert.deepEqual(tombstones,[{user_id:uid,analysis_id:id,event_index:1}]);assert.ok(job.error);
+ const result=await request(id);assert.equal(result.status,200);assert.equal(result.value.sync.pending,true);assert.deepEqual(tombstones,[{user_id:uid,analysis_id:id,event_index:1}]);assert.ok(job.error);assert.equal(result.value.background,true);assert.equal(tasks.length,1);assert.equal(typeof tasks[0],'function');
 });
 

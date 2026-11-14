@@ -5,6 +5,7 @@ const diagnosticLabels={'google.deletions':'Web 삭제 일정의 Google 반영 �
 const diagnosticFields=new Set(['serverRequestId','at','stage','requestId','analysisId','elapsedMs','durationMs','status','count','blocked','attempt','pending','connected','calendar','refresh','expired','method','operation','table','code','cached','bytes','index','action','line','online','visibility','limitType','limit','requested','retryAfterSeconds','tokenLimit','requestLimit','removed','checkedDeletions','inputTokens','outputTokens','totalTokens']);
 diagnosticLabels['google.write_verified']='Google 저장·삭제 재조회 확인';
 diagnosticLabels['reconcile.busy']='다른 동기화 요청 처리 중 · 자동 재확인 대기';
+Object.assign(diagnosticLabels,{'background.scheduled':'서버 후속 처리 예약','background.start':'서버 작업 시작','background.complete':'서버 작업 처리 완료','background.retry_wait':'서버 자동 재시도 대기','background.busy':'서버의 다른 작업 처리 중','background.failed':'서버 후속 처리 실패'});
 diagnosticLabels['meta.http.start']='Instagram 조회 요청';
 diagnosticLabels['meta.http.complete']='Instagram 조회 응답';
 diagnosticLabels['meta.http.failed']='Instagram 조회 실패';
@@ -57,7 +58,7 @@ function renderServerActivity(s){
  document.getElementById('server-health').textContent='Vercel API 응답 정상 · Supabase 연결 정상 · '+new Date(s.at).toLocaleString()+' 확인 · 응답 '+info.durationMs+'ms · 배포 '+info.build;
  document.getElementById('server-log-summary').textContent=info.logAvailable?'최근 7일 중 최신 '+requests.length+'건 · 오류 '+requests.filter(r=>r.status>=400).length+'건 · 본인 요청만 표시':'서버 이력 저장소 조회 실패 — 요청 이력을 확인할 수 없습니다.';
  const list=document.getElementById('server-request-log');list.replaceChildren();
- const changes=new Set(['test.collect.start','test.collect.complete','test.history.reset','analysis.complete','review.save','sync.enqueue','sync.result','google.token_refreshed','reconcile.complete']);
+ const changes=new Set(['background.start','background.complete','background.failed','test.collect.start','test.collect.complete','test.history.reset','analysis.complete','review.save','sync.enqueue','sync.result','google.token_refreshed','reconcile.complete']);
  for(const r of requests){const li=document.createElement('li'),head=document.createElement('strong'),detail=document.createElement('small');head.textContent=new Date(r.created_at).toLocaleString()+' · '+r.method+' '+r.route+' · '+(r.phase==='running'?'처리 중':r.status+' · '+r.duration_ms+'ms');detail.textContent=(r.steps??[]).filter(e=>changes.has(e.stage)).map(e=>(diagnosticLabels[e.stage]??e.stage)+(e.pending?' (반영 대기)':'')).join(' → ')||'요청 처리';li.append(head,detail);list.append(li);}
 }
 function autoRefreshDiagnostics(){if(!document.hidden&&signedIn&&!document.querySelector('[data-page="diagnostics"]').hidden)refreshDiagnostics();}

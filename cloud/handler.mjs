@@ -1,5 +1,4 @@
 import {operationalAdmin,saveDevice,operationsSnapshot,collectionSnapshot} from './operations.mjs';
-import {runCollectionJob} from './job.mjs';
 import {preferences,historyQuery,createTestUsers} from './test-users.mjs';
 import {saveRequestLog} from './request-logs.mjs';
 import {trace,tracedRequest,traceSnapshot,traceDatabase,diagnosticFailureCode} from './diagnostics.mjs';
@@ -14,18 +13,20 @@ import {createCollection} from './collection.mjs';
 import {createCloudGoogle} from './google.mjs';
 import {createSync} from './sync.mjs';
 import {calendarPayloads} from './calendar-payload.mjs';
+import {createServerWorker} from './server-worker.mjs';
 async function readBody(req){let raw='',size=0;if(req.body!==undefined){raw=typeof req.body==='string'?req.body:JSON.stringify(req.body);size=Buffer.byteLength(raw);}else for await(const c of req){size+=c.length;if(size>4*1024*1024)throw new AppError('요청이 너무 큽니다. 배포판은 합계 3MB 이하 이미지를 사용하세요.',413);raw+=c;}if(size>4*1024*1024)throw new AppError('요청이 너무 큽니다.',413);try{return JSON.parse(raw);}catch{throw new AppError('JSON 입력을 확인하세요.');}}
-export function createHandler(env,{db=createSupabase(env),crypto=cipher(env.TOKEN_ENCRYPTION_KEY),collection}={}){
+export function createHandler(env,{db=createSupabase(env),crypto=cipher(env.TOKEN_ENCRYPTION_KEY),collection,scheduleBackground}={}){
   const logDb=db;
   db=traceDatabase(db);
   const auth=createAuth({db,crypto,origin:env.PUBLIC_ORIGIN,supabaseUrl:env.SUPABASE_URL});
   let sync;
   const collect=collection??createCollection({db,env,onComplete:row=>sync.enqueueAnalysis(row)}),google=createCloudGoogle({db,crypto,env,locked:collect.locked});
   sync=createSync({db,env,collection:collect,google});
+  const worker=createServerWorker({db:logDb,sync,collection:collect,env});
   const testers=createTestUsers({db,collection:collect,dailyLimit:Number(env.DAILY_ANALYSIS_LIMIT||100),createScoped:(scoped,scope)=>createCollection({db:scoped,env,scope,onComplete:row=>sync.enqueueAnalysis(row)})});
   return async(req,res)=>tracedRequest(async()=>{
     let logUid=null,logPath='other';const requestStarted=Date.now();
-    const send=async(status,value,type='application/json; charset=utf-8')=>{trace('request.complete',{status});const diagnostic=traceSnapshot();const persisted=await saveRequestLog(logDb,{uid:logUid,path:logPath,method:req.method,status,started:requestStarted,snapshot:diagnostic,build:env.VERCEL_GIT_COMMIT_SHA,req});if(!persisted)diagnostic.logUnavailable=true;if(type.startsWith('application/json')&&value&&!Array.isArray(value))value={...value,diagnostics:diagnostic};res.setHeader('X-Moa-Request-Id',diagnostic.requestId);res.writeHead(status,{...securityHeaders,'Content-Type':type});res.end(type.startsWith('application/json')?JSON.stringify(value):value);};
+    const send=async(status,value,type='application/json; charset=utf-8')=>{if(req.method==='POST'&&status<400&&logUid&&scheduleBackground&&value?.retryable!==false&&(value?.pending||value?.more||value?.sync?.pending)){const uid=logUid;scheduleBackground(()=>worker.syncUser(uid,{deadline:requestStarted+240000}));trace('background.scheduled');value={...value,background:true};}trace('request.complete',{status});const diagnostic=traceSnapshot();const persisted=await saveRequestLog(logDb,{uid:logUid,path:logPath,method:req.method,status,started:requestStarted,snapshot:diagnostic,build:env.VERCEL_GIT_COMMIT_SHA,req});if(!persisted)diagnostic.logUnavailable=true;if(type.startsWith('application/json')&&value&&!Array.isArray(value))value={...value,diagnostics:diagnostic};res.setHeader('X-Moa-Request-Id',diagnostic.requestId);res.writeHead(status,{...securityHeaders,'Content-Type':type});res.end(type.startsWith('application/json')?JSON.stringify(value):value);};
     try{
       const url=new URL(req.url,env.PUBLIC_ORIGIN),path=url.searchParams.has('route')?'/'+url.searchParams.get('route'):url.pathname;
       logPath=path;trace('request.received',{method:req.method});
@@ -33,8 +34,8 @@ export function createHandler(env,{db=createSupabase(env),crypto=cipher(env.TOKE
       // Schedulers use an explicit secret and do not depend on browser cookies.
       if(path==='/api/cron'&&req.method==='GET'){
         if(!env.CRON_SECRET || req.headers.authorization!==`Bearer ${env.CRON_SECRET}`)throw new AppError('인증이 필요합니다.',401);
-        collect.runTest=testers.run;await runCollectionJob({db,collection:collect});await sync.drain(2);
-        return send(200,{ok:true});
+        collect.runTest=testers.run;const result=await worker.tick();
+        return send(200,{ok:true,...result});
       }
       validateOrigin(req,env.PUBLIC_ORIGIN,{callback});
       if(path==='/api/auth/google'&&req.method==='POST'){
@@ -93,6 +94,7 @@ export function createHandler(env,{db=createSupabase(env),crypto=cipher(env.TOKE
           analyses:analyses.map(a=>({analysisId:a.id,status:a.status,createdAt:a.created_at,count:a.result?.events?.length??0,failureCode:diagnosticFailureCode(a.error),provider:a.usage?.failure??null,usage:{inputTokens:a.usage?.input_tokens??null,outputTokens:a.usage?.output_tokens??null,totalTokens:a.usage?.total_tokens??null,reused:!!a.usage?.cache_reused}})),verification});
       }
       if(path==='/api/sync/reconcile'&&req.method==='POST'){const input=await readBody(req);return send(200,await sync.reconcile(uid,{begin:input.begin!==false}));}
+      if(path==='/api/sync/status'&&req.method==='GET'){const [job]=await db.read('moa_sync_jobs',{order:'next_due.asc',limit:'1'},s.token);return send(200,{pending:!!job,nextDue:job?.next_due??null,failed:!!job?.error,serverManaged:!!scheduleBackground});}
       if(path==='/api/status'&&req.method==='GET')return send(200,{configured:!!env.OPENAI_API_KEY,model:env.OPENAI_MODEL||'gpt-5.4-mini',count:null,limit:Number(env.DAILY_ANALYSIS_LIMIT||100),busy:false});
       if(path==='/api/integrations'&&req.method==='GET')return send(200,{google:await google.status(uid),meta:collect.metaStatus(),collector:await collectorStatus()});
       if(path==='/api/google/connect'&&req.method==='POST')return send(200,await google.begin(uid,res));

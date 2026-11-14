@@ -12,6 +12,7 @@
     "smoke:live": "node --env-file=.env.local scripts/live-check.mjs"
   },
   "dependencies": {
+    "@vercel/functions": "3.11.3",
     "@vercel/schedules": "^0.0.3",
     "google-auth-library": "^11.3.4"
   }
