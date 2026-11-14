@@ -12,15 +12,15 @@ export function createCloudGoogle({db,crypto,env,locked,clientFactory=options=>n
   const client=tokens=>{const c=clientFactory({clientId:env.GOOGLE_CALENDAR_CLIENT_ID,clientSecret:env.GOOGLE_CALENDAR_CLIENT_SECRET,redirectUri:redirect});c.setCredentials(tokens??{});return c;};
   const read=async uid=>{const [r]=await db.admin('moa_google',{user_id:`eq.${uid}`});return r?crypto.open(r.encrypted,`google:${uid}`):{};};
   const save=(uid,value)=>db.admin('moa_google',{}, {method:'POST',prefer:'resolution=merge-duplicates',body:{user_id:uid,encrypted:crypto.seal(value,`google:${uid}`),updated_at:new Date().toISOString()}});
-  const operate=(uid,fn)=>locked('google:'+uid,async()=>{
-    const state=await read(uid),c=client(state.tokens);trace('google.credentials',{refresh:!!state.tokens?.refresh_token,expired:(state.tokens?.expiry_date??0)<Date.now(),calendar:!!state.calendar});c.on('tokens',t=>{trace('google.token_refreshed');state.tokens={...state.tokens,...t};});
+  const operate=(uid,fn,{readOnly=false}={})=>locked('google:'+uid,async()=>{
+    const state=await read(uid),before=readOnly?JSON.stringify(state):null,c=client(state.tokens);trace('google.credentials',{refresh:!!state.tokens?.refresh_token,expired:(state.tokens?.expiry_date??0)<Date.now(),calendar:!!state.calendar});c.on('tokens',t=>{trace('google.token_refreshed');state.tokens={...state.tokens,...t};});
     const call=async(path,{method='GET',data}={})=>{
       trace('google.http.start',{method,operation:path.includes('/events')?'events':'calendar'});try{const response=(await c.request({url:'https://www.googleapis.com/calendar/v3'+path,method,data,retry:false,timeout:30000}));trace('google.http.complete',{status:response.status??200});return response.data;}
       catch(e){const code=e.response?.status;trace('google.http.failed',{status:code??502,code:e.response?.data?.error==='invalid_grant'?'invalid_grant':'provider_error'});if(code===401||e.response?.data?.error==='invalid_grant'){state.reconnectRequired=true;throw new AppError('Google 인증이 만료되었습니다. 다시 연결하세요.',401);}
         if([403,404,409,410].includes(code))throw new AppError('Google 캘린더 권한 또는 기존 일정 상태를 확인하세요.',code);
         throw new AppError('Google 연결에 실패했습니다. 다시 등록해도 같은 일정 ID를 사용합니다.',502);}
     };
-    try{return await fn(state,call);}finally{await save(uid,state);}
+    try{return await fn(state,call);}finally{if(!readOnly||before!==JSON.stringify(state))await save(uid,state);}
   });
   return {
     // Operator diagnostics only perform GETs against app-managed IDs derived on the server.
@@ -35,7 +35,7 @@ export function createCloudGoogle({db,crypto,env,locked,clientFactory=options=>n
         }catch(error){results.push({...entry,status:[404,410].includes(error.status)?'missing':'failed',...(![404,410].includes(error.status)?{httpStatus:error.status??502,failureCode:error.status===401?'auth_required':error.status===403?'permission':'upstream_request'}:{})});}
       }
       return {connected:true,results,limited:calendars.length>10};
-    }),
+    },{readOnly:true}),
     verifyRecent:uid=>operate(uid,async(s,call)=>{
       if(!s.calendar)return {connected:false,checked:0};
       await call('/calendars/'+encodeURIComponent(s.calendar.id));

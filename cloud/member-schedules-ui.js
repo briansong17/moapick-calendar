@@ -26,7 +26,7 @@ async function loadMemberSchedule(more=false){
   scheduleEvents.push(...r.events);scheduleNext=r.next;document.querySelector('.member-schedule-tools').hidden=false;
   document.getElementById('schedule-events-more').hidden=r.next===null;
   document.getElementById('schedule-member-connection').textContent=(r.google.reconnectRequired?'Google 재연결 필요':!r.google.connected?'Google 연결 없음':!r.google.calendar?'전용 캘린더 없음':'연결 캘린더: '+r.google.calendar)+' · 구독 '+r.subscriptions.length+'개 · '+new Date(r.at).toLocaleString()+' 조회';
-  document.getElementById('schedule-admin-status').textContent=r.member.login+' · 분석 '+r.analysisCount+'건 중 현재 '+Math.min(offset+r.pageAnalyses,r.analysisCount)+'건 조회';renderMemberSchedules();
+  document.getElementById('schedule-admin-status').textContent=r.member.login+' · 분석 연결 기록 '+r.analysisCount+'건 중 '+r.loadedThrough+'건 확인';renderMemberSchedules();
  }catch(error){if(generation===scheduleGeneration)document.getElementById('schedule-admin-status').textContent='조회 실패 · '+error.message;}
  finally{if(generation===scheduleGeneration){scheduleLoading=false;document.getElementById('schedule-member-refresh').disabled=false;}}
 }
@@ -40,6 +40,7 @@ function memberGoogleText(v){
   const prefix=r.calendar==='previous'?'이전 캘린더: ':'';
   if(r.status==='failed')return prefix+'조회 실패'+(r.httpStatus?' ('+r.httpStatus+')':'');
   if(r.status==='present')return prefix+(v.expected==='absent'?'삭제 반영 필요 · Google에 남아 있음':r.matchesExpected===false?'Google에 존재 · 웹 내용과 다름':'Google에 존재');
+  if(r.status==='deleted'&&v.expected==='present')return prefix+'Google에서 삭제됨 · 자동 복원하지 않음';
   return prefix+(v.expected==='present'?'등록 대상이지만 Google에 없음':v.expected==='absent'?'Google 삭제 확인':'Google에 없음');
  }).join(' / ')+(v.limited?' · 일부 캘린더만 확인':'');
 }

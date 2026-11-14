@@ -39,10 +39,11 @@ test('own exported records remain inspectable after unsubscribing, but arbitrary
   if(table==='moa_exports')return [{analysis_id:id,source_user_id:'legacy-member',calendar_id:'legacy-calendar',event_ids:[digest(`moa:legacy-member:${id}:0`)],status:'complete'}];
   if(table==='moa_analyses')return q.id?[{...row,owner_id:null}]:[];
   return [];
- }};let read;
- const service=createMemberSchedules({db,env:{PUBLIC_ORIGIN:'https://moa.example'},now,google:{status:async()=>({connected:true}),inspectManaged:async(target,query)=>{read={target,query};return {connected:true,results:[{status:'present'}]};}}});
+ }};let read,attempts=0;const waits=[];
+ const service=createMemberSchedules({db,env:{PUBLIC_ORIGIN:'https://moa.example'},now,wait:async ms=>waits.push(ms),google:{status:async()=>({connected:true}),inspectManaged:async(target,query)=>{if(++attempts===1)throw Object.assign(new Error('busy'),{status:409});read={target,query};return {connected:true,results:[{status:'present'}]};}}});
  assert.equal((await service.events(uid)).events[0].stored,'recorded');
  const result=await service.verify(uid,id,0);assert.equal(result.expected,'present');assert.equal(read.query.id,digest(`moa:legacy-member:${id}:0`));assert.equal(read.query.calendarId,'legacy-calendar');
+ assert.deepEqual(waits,[500]);assert.equal(attempts,2);
  await assert.rejects(service.verify(uid,'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',0),e=>e.status===404);
 });
 test('member picker only returns identity needed for selection',async()=>{
@@ -55,6 +56,10 @@ test('Google operator verification uses GET only and distinguishes present, dele
   calls.push(options);assert.equal(options.method,'GET');if(options.url.includes('/missing/'))throw {response:{status:404}};return {data:options.url.includes('/old/')?{status:'cancelled'}:{status:'confirmed'}};
  }})});
  const result=await google.inspectManaged(uid,{id:'managed-id',previousCalendars:['old','missing']});assert.deepEqual(result.results.map(r=>r.status),['present','deleted','missing']);assert.equal(calls.length,3);assert.doesNotMatch(JSON.stringify(result),/SECRET|managed-id/);
+});
+test('inspection of a disconnected member does not create or change Google connection records',async()=>{
+ const google=createCloudGoogle({db:{admin:async(table,q,options)=>{assert.equal(options,undefined);return [];}},crypto:{open:v=>v,seal:v=>v},env:{},locked:async(_,fn)=>fn(),clientFactory:()=>({setCredentials(){},on(){},request:()=>assert.fail('no credentials must not call Google')})});
+ assert.deepEqual(await google.inspectManaged(uid,{id:'managed-id'}),{connected:false,results:[],limited:false});
 });
 test('admin APIs require the dedicated role, reject writes and validate targets before content access',async()=>{
  const crypto=cipher(randomBytes(32).toString('base64')),sid='f'.repeat(64),hash=digest(sid);let role=false,contentReads=0;

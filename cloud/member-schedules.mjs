@@ -3,6 +3,7 @@ import {calendarEventPayload} from './calendar-payload.mjs';
 import {upcomingPayload} from './upcoming.mjs';
 import {digest} from './security.mjs';
 import {diagnosticFailureCode,trace} from './diagnostics.mjs';
+import {setTimeout as delay} from 'node:timers/promises';
 
 // Content access is deliberately separate from the coarse device-diagnostics role.
 export const memberScheduleAdmin=(env,uid)=>(env.MEMBER_SCHEDULE_ADMIN_IDS??'').split(',').map(v=>v.trim()).filter(Boolean).includes(uid);
@@ -66,7 +67,7 @@ export function inspectScheduleRows(uid,rows,origin,now=new Date()){
   });
 }
 const publicSchedule=({_id,_payload,_calendarId,_exports,...event})=>event;
-export function createMemberSchedules({db,google,env,now=()=>new Date()}){
+export function createMemberSchedules({db,google,env,now=()=>new Date(),wait=delay}){
   return {
     list:page=>listScheduleMembers(db,page),
     async events(uid,offset=0){
@@ -74,7 +75,7 @@ export function createMemberSchedules({db,google,env,now=()=>new Date()}){
       const [rows,connection]=await Promise.all([rowsWithState(db,uid,page),google.status(uid)]);
       const events=inspectScheduleRows(uid,rows,env.PUBLIC_ORIGIN,now()).map(publicSchedule);
       trace('admin.member_view',{code:digest(uid).slice(0,12),operation:'events',count:events.length});
-      return {member:info,at:now().toISOString(),events,subscriptions,analysisCount:ids.length,pageAnalyses:rows.length,next:offset+20<ids.length?offset+20:null,
+      return {member:info,at:now().toISOString(),events,subscriptions,analysisCount:ids.length,pageAnalyses:rows.length,loadedThrough:offset+page.length,next:offset+20<ids.length?offset+20:null,
         google:{connected:connection.connected,calendar:connection.calendar??null,reconnectRequired:!!connection.reconnectRequired}};
     },
     async verify(uid,analysisId,index){
@@ -83,7 +84,10 @@ export function createMemberSchedules({db,google,env,now=()=>new Date()}){
       const rows=await rowsWithState(db,uid,[analysisId]),event=inspectScheduleRows(uid,rows,env.PUBLIC_ORIGIN,now()).find(e=>e.index===index);
       if(!event)throw new AppError('일정을 찾을 수 없습니다.',404);
       const expected=event.reason==='eligible'?'present':['deleted','review_excluded'].includes(event.reason)?'absent':'not_required';
-      const result=await google.inspectManaged(uid,{id:event._id,calendarId:event._calendarId,previousCalendars:event._exports.filter(e=>e.event_ids?.includes(event._id)).map(e=>e.calendar_id),payload:event._payload});
+      let result;
+      for(let attempt=0;attempt<6;attempt++)try{
+        result=await google.inspectManaged(uid,{id:event._id,calendarId:event._calendarId,previousCalendars:event._exports.filter(e=>e.event_ids?.includes(event._id)).map(e=>e.calendar_id),payload:event._payload});break;
+      }catch(error){if(error.status!==409||attempt===5)throw error;trace('admin.google_wait',{attempt:attempt+1,status:409});await wait((attempt+1)*500);}
       trace('admin.member_view',{code:digest(uid).slice(0,12),operation:'google_read',count:result.results.length});
       return {analysisId,index,at:now().toISOString(),expected,...result};
     }
