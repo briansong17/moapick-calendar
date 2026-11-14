@@ -101,10 +101,11 @@ export function createHandler(env,{db=createSupabase(env),crypto=cipher(env.TOKE
       if(path==='/api/meta/accounts'&&req.method==='POST'){await collect.subscribe(uid,(await readBody(req)).username);await sync.enqueueVisible(uid);return send(200,await collectorStatus());}
       if(['/api/meta/enable','/api/meta/unsubscribe','/api/meta/poll'].includes(path)&&req.method==='POST'){
         const input=await readBody(req),name=accountName(input.username);await requireSubscription(name);
-        if(path.endsWith('/poll')){if((await preferences(db,uid)).test_user)await testers.run(uid,{username:name});else await collect.poll(name);await sync.reconcile(uid,{begin:false});}
+        let collectionResult;
+        if(path.endsWith('/poll')){if((await preferences(db,uid)).test_user)collectionResult=await testers.run(uid,{username:name});else await collect.poll(name);await sync.reconcile(uid,{begin:false});}
         else if(path.endsWith('/unsubscribe'))await db.admin('moa_subscriptions',{user_id:`eq.${uid}`,username:`eq.${name}`},{method:'DELETE'});
         else{if(typeof input.enabled!=='boolean')throw new AppError('설정값을 확인하세요.');await db.admin('moa_subscriptions',{user_id:`eq.${uid}`,username:`eq.${name}`},{method:'PATCH',body:{enabled:input.enabled}});}
-        return send(200,await collectorStatus());
+        return send(200,{...await collectorStatus(),...(collectionResult?{collectionResult}:{})});
       }
       if(path==='/api/events'&&req.method==='GET'){
         const offset=Number(url.searchParams.get('offset')??0);

@@ -56,6 +56,9 @@ js=js.replace("$('auth-title').textContent=signedIn?","$('auth-panel').hidden=!!
 // Instrument only the cloud bundle; keep the local application independent.
 const diagnosticUI=(await readFile('cloud/diagnostics-ui.js','utf8')).replace('__BUILD_ID__',process.env.VERCEL_GIT_COMMIT_SHA?.slice(0,12)||'local');
 js=await readFile('cloud/devices-ui.js','utf8')+'\n'+diagnosticUI+'\n'+await readFile('cloud/reconcile-ui.js','utf8')+'\n'+await readFile('cloud/test-users-ui.js','utf8')+'\n'+js;
+// Preserve test collection eligibility in the manual action instead of reporting a skipped request as complete.
+js=js.replace("await api('/api/meta/poll', { username: a.username });", "const collectionResponse=await api('/api/meta/poll', { username: a.username });")
+ .replace("return '수집이 끝났습니다. 처리 기록과 분석 결과를 확인하세요.';", "return collectionResponse.collectionResult?collectionResultMessage(collectionResponse.collectionResult):'수집이 끝났습니다. 처리 기록과 분석 결과를 확인하세요.';");
 js=js.replace(/async function api\(path, data\) \{[\s\S]*?\n\}/, 'async function api(path,data){return diagnosticApi(path,data);}');
 js=js.replace("function message(text) { $('message').textContent = text; }", "function message(text) { $('message').textContent=text;diagnosticNotice(text); }");
 js=js.replace("signedIn=state.user;", "signedIn=state.user;diagnosticBind(signedIn);if(signedIn)queueMicrotask(async()=>{await testVisit();void reconcileCalendar(true);});");

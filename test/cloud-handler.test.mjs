@@ -5,6 +5,26 @@ import {Readable} from 'node:stream';
 import {createHandler} from '../cloud/handler.mjs';
 import {cipher,digest} from '../cloud/security.mjs';
 import {createSupabase} from '../cloud/supabase.mjs';
+
+test('manual test collection returns the actual skipped outcome instead of implying that a post was processed',async()=>{
+ const crypto=cipher(randomBytes(32).toString('base64')),sid='d'.repeat(64),uid='11111111-1111-4111-8111-111111111111';
+ const account={username:'school',phase:'initial',processed:0,next_due:'2099-01-01T00:00:00Z'};
+ const db={rpc:async()=>true,auth:async()=>({id:uid,email:'test@example.test',email_confirmed_at:'yes'}),
+  read:async(name)=>name==='moa_subscriptions'?[{username:'school',enabled:true}]:name==='moa_test_accounts'?[account]:[],
+  admin:async(name)=>{
+   if(name==='moa_sessions')return [{user_id:uid,encrypted:crypto.seal({access_token:'token',expires_at:Date.now()/1000+3600},'session:'+digest(sid))}];
+   if(name==='moa_preferences')return [{test_user:true}];
+   if(name==='moa_subscriptions')return [{username:'school',enabled:true}];
+   if(name==='moa_test_accounts')return [account];
+   return [];
+  }};
+ const collection={locked:async(_,fn)=>fn(),metaStatus:()=>({configured:true}),poll:async()=>assert.fail('not-due collection must not poll')};
+ const handler=createHandler({PUBLIC_ORIGIN:'https://moa.example',SUPABASE_URL:'https://test.supabase.co'},{db,crypto,collection});
+ const req=Readable.from([]);Object.assign(req,{url:'/api/meta/poll',method:'POST',body:{username:'school'},headers:{host:'moa.example',origin:'https://moa.example','content-type':'application/json',cookie:'__Host-moa='+sid}});
+ let status,value;await handler(req,{setHeader(){},writeHead(code){status=code;},end(body){value=JSON.parse(body);}});
+ assert.equal(status,200);assert.equal(value.collectionResult.processed,false);assert.equal(value.collectionResult.reason,'not_due');
+ assert.equal(value.collectionResult.deferred[0].nextDue,account.next_due);
+});
 test('배포 API는 서버 검증한 회원만 사용하며 RLS에 사용자 토큰 전달',async()=>{
  const crypto=cipher(randomBytes(32).toString('base64')),sessionId='a'.repeat(64),hash=digest(sessionId),uid='11111111-1111-4111-8111-111111111111';let readTokens=[],writes=0;
  const db={admin:async(name,q,options)=>{if(options&&name!=='moa_request_logs')writes++;if(name==='moa_sessions')return [{user_id:uid,created_at:new Date().toISOString(),encrypted:crypto.seal({access_token:'verified-user-token',expires_at:Date.now()/1000+3600},'session:'+hash)}];return [];},

@@ -16,7 +16,9 @@ export function createTestUsers({db,collection,createScoped,dailyLimit=100}){
   const subs=await db.admin('moa_subscriptions',{user_id:`eq.${uid}`,enabled:'eq.true',...(username?{username:`eq.${username}`}:{ }),order:'username.asc'});
   const scoped=testDatabase(db,uid),now=new Date(),skipped=[];
   for(const sub of subs){let [account]=await scoped.admin('moa_accounts',{username:`eq.${sub.username}`});
-   if(!account){await scoped.admin('moa_accounts',{}, {method:'POST',prefer:'resolution=ignore-duplicates',body:{username:sub.username}});[account]=await scoped.admin('moa_accounts',{username:`eq.${sub.username}`});}
+   // The database default now() is later than the eligibility cutoff captured above.
+   // Make only this new account due in this attempt; preserve every existing backoff.
+   if(!account){await scoped.admin('moa_accounts',{}, {method:'POST',prefer:'resolution=ignore-duplicates',body:{username:sub.username,next_due:now.toISOString()}});[account]=await scoped.admin('moa_accounts',{username:`eq.${sub.username}`});}
    if(account.phase==='paused')continue;
    if(Date.parse(account.next_due)>now.getTime()){
     let quotaRecovered=false;
