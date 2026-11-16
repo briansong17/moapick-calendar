@@ -2,7 +2,7 @@ import {trace} from './diagnostics.mjs';
 import {randomUUID} from 'node:crypto';
 import {AppError,validateInput,inputHash,extract} from '../lib/extraction.mjs';
 import {accountName,contentHash,createInstagram} from '../lib/instagram.mjs';
-import {pastBoundary} from '../lib/collector.mjs';
+import {pastBoundary} from '../lib/collection-boundary.mjs';
 import {koreanDay as day} from './time.mjs';
 export function createCollection({db,env,analyze=extract,instagram,onComplete=async()=>{},scope=null}) {
   const model=env.OPENAI_MODEL||'gpt-5.4-mini';

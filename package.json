@@ -7,9 +7,9 @@
     "node": ">=24"
   },
   "scripts": {
-    "start": "node --env-file=.env.local server.mjs",
-    "test": "node --test",
-    "smoke:live": "node --env-file=.env.local scripts/live-check.mjs"
+    "build": "node cloud/build.mjs",
+    "test": "node --test test/*.test.mjs",
+    "check": "npm run build && node --check dist/app.js"
   },
   "dependencies": {
     "@vercel/functions": "3.11.3",
