@@ -33,7 +33,7 @@ html=html.replace('<section data-page="testing"',await readFile('cloud/member-sc
 html=html.replace('아이폰 표시 완료','휴대폰 앱의 표시 완료').replaceAll('아이폰 캘린더 앱의 표시 완료','휴대폰 캘린더 앱의 표시 완료')
  .replace('Google 반영 확인은 서버 기록 중 최대 10개를 실제 Google에서 조회합니다.','Google 반영 확인은 서버의 등록·삭제 대상 중 최대 10개를 실제 Google에서 조회합니다.')
  .replace('아이폰에서는 같은 Google 계정과 ‘모아 · Instagram 일정’ 캘린더가 표시 대상으로 선택돼 있는지도 확인해 주세요.','휴대폰에서는 같은 Google 계정의 현재 연결된 캘린더가 표시 대상으로 선택돼 있는지도 확인해 주세요.')
- .replace('<h2 id="device-scope">',(await readFile('cloud/device-calendar-help.html','utf8'))+'<h2 id="device-scope">');
+ .replace('<!-- device-calendar-help -->',await readFile('cloud/device-calendar-help.html','utf8'));
 js+='\n'+await readFile('cloud/navigation.js','utf8');
 js=js.replace("$('connection-message').textContent = text;", "$('connection-message').textContent = text; $('settings-status').textContent=text;");
 js=js.replace('`연결 설정됨 · @${s.meta.account} · ${s.meta.version}`', "'자동 수집 연결 설정됨'").replace('새 Meta 앱·토큰 설정 필요','자동 수집 연결을 준비 중입니다.').replace('클라이언트 설정 완료 · 계정 연결 필요','Google 계정을 연결하세요.').replace('새 Google OAuth 클라이언트 설정 필요','캘린더 연결을 준비 중입니다.');
