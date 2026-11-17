@@ -11,9 +11,18 @@ export function cipher(encodedKey) {
     open(value,context) {try{const bytes=Buffer.from(value,'base64url'),d=createDecipheriv('aes-256-gcm',key,bytes.subarray(0,12));d.setAAD(Buffer.from(context));d.setAuthTag(bytes.subarray(12,28));return JSON.parse(Buffer.concat([d.update(bytes.subarray(28)),d.final()]).toString());}catch{throw new AppError('저장된 연결 정보를 확인할 수 없습니다. 관리자에게 문의하세요.',503);}}
   };
 }
-export function validateOrigin(req,origin,{callback=false}={}) {
+const loopbackHosts=new Set(['127.0.0.1','localhost','[::1]']);
+export function localOrigin(origin,allowLocal=false){if(!allowLocal)return false;const u=new URL(origin);return u.protocol==='http:'&&loopbackHosts.has(u.hostname)&&!u.username&&!u.password&&u.pathname==='/';}
+export function cookiePolicy(origin,{allowLocal=false}={}){
+  const local=localOrigin(origin,allowLocal);
+  return {name:name=>local?name.replace(/^__Host-/, 'local-'):name,
+    serialize:(name,value,maxAge=604800)=>local?`${name}=${value}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${value?maxAge:0}`:secureCookie(name,value,maxAge)};
+}
+export function validateOrigin(req,origin,{callback=false,allowLocal=false}={}) {
   const expected=new URL(origin);
-  if(expected.protocol!=='https:' || expected.username || expected.password || expected.pathname!=='/')throw new Error('PUBLIC_ORIGIN must be an HTTPS origin');
+  const local=localOrigin(origin,allowLocal);
+  if((expected.protocol!=='https:'&&!local) || expected.username || expected.password || expected.pathname!=='/')throw new Error('PUBLIC_ORIGIN must be an HTTPS origin');
+  if(local&&!['127.0.0.1','::1','::ffff:127.0.0.1'].includes(req.socket?.remoteAddress))throw new AppError('PC 내부 접속만 허용합니다.',403);
   if(req.headers.host!==expected.host)throw new AppError('허용되지 않은 주소입니다.',403);
   if(req.headers.origin && req.headers.origin!==expected.origin)throw new AppError('다른 사이트 요청은 허용하지 않습니다.',403);
   if(req.headers['sec-fetch-site']==='cross-site'&&!callback)throw new AppError('다른 사이트 요청은 허용하지 않습니다.',403);

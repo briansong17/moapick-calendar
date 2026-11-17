@@ -4,10 +4,11 @@ import {OAuth2Client} from 'google-auth-library';
 import {randomBytes} from 'node:crypto';
 import {AppError} from '../lib/extraction.mjs';
 import {googleEvent,GOOGLE_SCOPE} from '../lib/google.mjs';
-import {digest,secureCookie} from './security.mjs';
+import {digest,cookiePolicy} from './security.mjs';
 import {calendarPayloads} from './calendar-payload.mjs';
 import {sameManagedEvent,verifyGoogleEvent} from './google-event-verification.mjs';
 export function createCloudGoogle({db,crypto,env,locked,clientFactory=options=>new OAuth2Client(options),now=()=>new Date(),verificationWait}) {
+  const policy=cookiePolicy(env.PUBLIC_ORIGIN,{allowLocal:env.MOA_LOCAL_DEV==='1'}),flowCookie=policy.name('__Host-moa-google'),secureCookie=policy.serialize;
   const redirect=env.PUBLIC_ORIGIN+'/oauth/google/callback';
   const client=tokens=>{const c=clientFactory({clientId:env.GOOGLE_CALENDAR_CLIENT_ID,clientSecret:env.GOOGLE_CALENDAR_CLIENT_SECRET,redirectUri:redirect});c.setCredentials(tokens??{});return c;};
   const read=async uid=>{const [r]=await db.admin('moa_google',{user_id:`eq.${uid}`});return r?crypto.open(r.encrypted,`google:${uid}`):{};};
@@ -52,16 +53,16 @@ export function createCloudGoogle({db,crypto,env,locked,clientFactory=options=>n
     async begin(uid,res){if(!env.GOOGLE_CALENDAR_CLIENT_ID)throw new AppError('캘린더 연결 준비 중입니다.',503);
       const c=client(),state=randomBytes(32).toString('hex'),binding=randomBytes(32).toString('hex');const {codeVerifier,codeChallenge}=await c.generateCodeVerifierAsync();
       await db.admin('moa_oauth',{}, {method:'POST',body:{state_hash:digest(state),user_id:uid,encrypted:crypto.seal({binding,codeVerifier},`oauth:${uid}`),expires_at:new Date(Date.now()+600000).toISOString()}});
-      res.setHeader('Set-Cookie',secureCookie('__Host-moa-google',binding,600));
+      res.setHeader('Set-Cookie',secureCookie(flowCookie,binding,600));
       return {url:c.generateAuthUrl({scope:[GOOGLE_SCOPE],access_type:'offline',prompt:'consent',state,code_challenge:codeChallenge,code_challenge_method:'S256'})};},
     async callback(uid,req,res,params){
       const state=params.get('state');if(!/^[a-f0-9]{64}$/.test(state??''))throw new AppError('유효하지 않은 인증 요청입니다.');
       const query={state_hash:`eq.${digest(state)}`,user_id:`eq.${uid}`,expires_at:`gt.${new Date().toISOString()}`};
       const [r]=await db.admin('moa_oauth',query);if(!r)throw new AppError('인증 요청이 만료되었습니다.');
-      const flow=crypto.open(r.encrypted,`oauth:${uid}`),binding=/(?:^|;\s*)__Host-moa-google=([a-f0-9]{64})(?:;|$)/.exec(req.headers.cookie??'')?.[1];
+      const flow=crypto.open(r.encrypted,`oauth:${uid}`),binding=req.headers.cookie?.split(';').map(c=>c.trim()).find(c=>c.startsWith(flowCookie+'='))?.slice(flowCookie.length+1);
       if(flow.binding!==binding)throw new AppError('인증 브라우저가 일치하지 않습니다.',403);
       const taken=await db.admin('moa_oauth',query,{method:'DELETE',prefer:'return=representation'});if(!taken.length)throw new AppError('이미 사용한 인증 요청입니다.');
-      res.setHeader('Set-Cookie',secureCookie('__Host-moa-google',''));
+      res.setHeader('Set-Cookie',secureCookie(flowCookie,''));
       if(params.has('error')||!params.get('code'))throw new AppError('Google 승인이 취소되었습니다.');
       let tokens;try{({tokens}=await client().getToken({code:params.get('code'),codeVerifier:flow.codeVerifier,redirect_uri:redirect}));}catch{throw new AppError('Google 승인을 완료하지 못했습니다.',502);}
       if(!tokens.refresh_token||!tokens.scope?.split(' ').includes(GOOGLE_SCOPE))throw new AppError('필요한 캘린더 권한을 승인해 주세요.');

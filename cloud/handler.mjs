@@ -20,7 +20,7 @@ async function readBody(req){let raw='',size=0;if(req.body!==undefined){raw=type
 export function createHandler(env,{db=createSupabase(env),crypto=cipher(env.TOKEN_ENCRYPTION_KEY),collection,scheduleBackground}={}){
   const logDb=db;
   db=traceDatabase(db);
-  const auth=createAuth({db,crypto,origin:env.PUBLIC_ORIGIN,supabaseUrl:env.SUPABASE_URL});
+  const auth=createAuth({db,crypto,origin:env.PUBLIC_ORIGIN,supabaseUrl:env.SUPABASE_URL,localDevelopment:env.MOA_LOCAL_DEV==='1'});
   let sync;
   const collect=collection??createCollection({db,env,onComplete:row=>sync.enqueueAnalysis(row)}),google=createCloudGoogle({db,crypto,env,locked:collect.locked});
   sync=createSync({db,env,collection:collect,google});
@@ -40,7 +40,7 @@ export function createHandler(env,{db=createSupabase(env),crypto=cipher(env.TOKE
         collect.runTest=testers.run;const result=await worker.tick();
         return send(200,{ok:true,...result});
       }
-      validateOrigin(req,env.PUBLIC_ORIGIN,{callback});
+      validateOrigin(req,env.PUBLIC_ORIGIN,{callback,allowLocal:env.MOA_LOCAL_DEV==='1'});
       if(path==='/api/auth/google'&&req.method==='POST'){
         const ip=req.headers['x-vercel-forwarded-for']??req.socket?.remoteAddress??'unknown';
         if(!await db.rpc('moa_take_limit',{p_bucket:'login:'+digest(String(ip)),p_limit:20,p_seconds:900}))throw new AppError('잠시 후 다시 로그인해 주세요.',429);

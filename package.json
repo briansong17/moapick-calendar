@@ -7,6 +7,8 @@
     "node": ">=24"
   },
   "scripts": {
+    "start": "node scripts/start.mjs",
+    "dev": "npm start",
     "build": "node cloud/build.mjs",
     "test": "node --test test/*.test.mjs",
     "check": "npm run build && node --check dist/app.js"

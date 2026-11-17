@@ -1,9 +1,9 @@
 import {randomBytes,randomUUID,createHash} from 'node:crypto';
 import {AppError} from '../lib/extraction.mjs';
-import {digest,secureCookie} from './security.mjs';
-const SESSION='__Host-moa',FLOW='__Host-moa-login';
+import {digest,cookiePolicy} from './security.mjs';
 const cookie=(req,name)=>req.headers.cookie?.split(';').map(x=>x.trim()).find(x=>x.startsWith(name+'='))?.slice(name.length+1);
-export function createAuth({db,crypto,origin,supabaseUrl}) {
+export function createAuth({db,crypto,origin,supabaseUrl,localDevelopment=false}) {
+  const policy=cookiePolicy(origin,{allowLocal:localDevelopment}),SESSION=policy.name('__Host-moa'),FLOW=policy.name('__Host-moa-login'),secureCookie=policy.serialize;
   async function session(req) {
     const id=cookie(req,SESSION);if(!/^[a-f0-9]{64}$/.test(id??''))return null;
     const hash=digest(id),[row]=await db.admin('moa_sessions',{id:`eq.${hash}`,expires_at:`gt.${new Date().toISOString()}`});

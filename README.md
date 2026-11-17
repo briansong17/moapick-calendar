@@ -13,7 +13,16 @@ vercel.json → cloud/build.mjs → api/index.mjs → cloud/handler.mjs 순서�
 
 ## 코드 확인과 배포
 
-Node.js 24 이상과 npm을 사용합니다. 다음 명령은 빌드와 검사용입니다. PC용 서버는 운영 경로에 포함하지 않습니다.
+Node.js 24 이상과 npm을 사용합니다. 운영 서비스는 Vercel에서 실행됩니다. PC에서 같은 코드를 실행해 확인할 때는 다음 명령을 사용합니다.
+
+~~~cmd
+cd /d "D:\AI_SW_2026팀플\instagram-calendar"
+npm start
+~~~
+
+접속 주소는 http://127.0.0.1:3080 이며 종료는 Ctrl+C입니다. `npm run dev`도 같은 실행 명령입니다. 실행할 때 화면을 빌드하고, Vercel과 같은 `cloud/handler.mjs`와 Supabase를 사용합니다. PC 안에서만 접속할 수 있고 로컬 로그인 쿠키는 운영 사이트의 쿠키와 구분합니다. 설정은 Git 제외 파일 `.env.development.local`, `.env.cloud.local`, `.env.local` 순서로 읽습니다. 먼저 설정된 값과 실행 환경변수가 우선합니다. Google 로그인에는 Supabase의 로컬 리디렉션 허용이, 캘린더 새 연결에는 해당 로컬 콜백 URI 등록이 필요합니다.
+
+다음 명령은 빌드와 검사용입니다.
 
 ~~~powershell
 cd 'D:\AI_SW_2026팀플\instagram-calendar'
