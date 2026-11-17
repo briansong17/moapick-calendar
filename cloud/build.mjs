@@ -6,7 +6,7 @@ js=js.slice(0,js.indexOf('async function loadSession()'))+`
 async function loadSession(){const state=await api('/api/auth/me');signedIn=state.user;
  $('cloud-login').hidden=!!signedIn;$('logout').hidden=!signedIn;$('member-content').hidden=!signedIn;
  $('auth-title').textContent=signedIn?signedIn.login+'님의 모아':'Google 로그인 · 회원가입';
- $('auth-status').textContent=signedIn?'내 구독과 일정을 관리하세요.':'Google 계정으로 가입하고 로그인하세요.';
+ $('auth-status').textContent='';
  document.querySelectorAll('[data-admin]').forEach(e=>e.hidden=true);
  if(signedIn)await Promise.all([status(),history(),connections()]);}
  $('cloud-login').onclick=async()=>{try{const r=await api('/api/auth/google',{});window.location.assign(r.url);}catch(e){$('auth-status').textContent=e.message;}};
@@ -29,7 +29,6 @@ js=js.replace('Promise.all([status(),history(),connections()])','Promise.all([st
 js+='\n'+await readFile('cloud/event-management-ui.js','utf8');
 js=js.replace(/모아(?!픽)/g,'모아픽 캘린더');
 html=await readFile('cloud/index.html','utf8');
-html=html.replace('<button data-view="diagnostics">','<button data-view="members" id="member-schedules-nav" hidden><span aria-hidden="true">▦</span>회원 일정</button><button data-view="diagnostics">');
 html=html.replace('<section data-page="testing"',await readFile('cloud/member-schedules.html','utf8')+'<section data-page="testing"');
 html=html.replace('아이폰 표시 완료','휴대폰 앱의 표시 완료').replaceAll('아이폰 캘린더 앱의 표시 완료','휴대폰 캘린더 앱의 표시 완료')
  .replace('Google 반영 확인은 서버 기록 중 최대 10개를 실제 Google에서 조회합니다.','Google 반영 확인은 서버의 등록·삭제 대상 중 최대 10개를 실제 Google에서 조회합니다.')
@@ -45,14 +44,14 @@ js=js.replace("function render(row) {","function render(row) { openView('review'
 js=js.replace("$('auth-title').textContent=signedIn?","$('auth-panel').hidden=!!signedIn;$('member-email').textContent=signedIn?.login??'';$('settings-email').textContent=signedIn?.login??''; $('auth-title').textContent=signedIn?");
 // Assemble the browser bundle used by the Vercel deployment.
 const diagnosticUI=(await readFile('cloud/diagnostics-ui.js','utf8')).replace('__BUILD_ID__',process.env.VERCEL_GIT_COMMIT_SHA?.slice(0,12)||'local');
-js=await readFile('cloud/member-schedules-ui.js','utf8')+'\n'+await readFile('cloud/devices-ui.js','utf8')+'\n'+diagnosticUI+'\n'+await readFile('cloud/reconcile-ui.js','utf8')+'\n'+await readFile('cloud/test-users-ui.js','utf8')+'\n'+await readFile('cloud/review-link-ui.js','utf8')+'\n'+js;
+js=await readFile('cloud/workspace-ui.js','utf8')+'\n'+await readFile('cloud/member-schedules-ui.js','utf8')+'\n'+await readFile('cloud/devices-ui.js','utf8')+'\n'+diagnosticUI+'\n'+await readFile('cloud/reconcile-ui.js','utf8')+'\n'+await readFile('cloud/test-users-ui.js','utf8')+'\n'+await readFile('cloud/review-link-ui.js','utf8')+'\n'+js;
 if(!js.includes('await openRequestedAnalysis();'))throw new Error('Cloud review link hook is missing');
 // Preserve test collection eligibility in the manual action instead of reporting a skipped request as complete.
 js=js.replace("await api('/api/meta/poll', { username: a.username });", "const collectionResponse=await api('/api/meta/poll', { username: a.username });")
  .replace("return '수집이 끝났습니다. 처리 기록과 분석 결과를 확인하세요.';", "return collectionResponse.collectionResult?collectionResultMessage(collectionResponse.collectionResult):'수집이 끝났습니다. 처리 기록과 분석 결과를 확인하세요.';");
 js=js.replace(/async function api\(path, data\) \{[\s\S]*?\n\}/, 'async function api(path,data){return diagnosticApi(path,data);}');
 js=js.replace("function message(text) { $('message').textContent = text; }", "function message(text) { $('message').textContent=text;diagnosticNotice(text); }");
-js=js.replace("signedIn=state.user;", "signedIn=state.user;diagnosticBind(signedIn);bindMemberSchedules(signedIn);if(signedIn)queueMicrotask(async()=>{await testVisit();void reconcileCalendar(true);});");
+js=js.replace("signedIn=state.user;", "signedIn=state.user;bindWorkspace(signedIn);diagnosticBind(signedIn);bindMemberSchedules(signedIn);if(signedIn)queueMicrotask(async()=>{await testVisit();void reconcileCalendar(true);});");
 js=js.replace("previewUrls.forEach(URL.revokeObjectURL);", "diagnosticLog('image.selected',{count:$('images').files.length,bytes:[...$('images').files].reduce((n,f)=>n+f.size,0)});previewUrls.forEach(URL.revokeObjectURL);");
 js=js.replace("const readImage = file => new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(r.result); r.onerror = () => reject(new Error('이미지를 읽지 못했습니다.')); r.readAsDataURL(file); });", "const readImage = file => new Promise((resolve,reject)=>{diagnosticLog('image.read.start',{bytes:file.size});const r=new FileReader();r.onload=()=>{diagnosticLog('image.read.complete',{bytes:file.size});resolve(r.result);};r.onerror=r.onabort=()=>{diagnosticLog('image.read.failed');reject(new Error('이미지를 읽지 못했습니다.'));};r.readAsDataURL(file);});");
 js=js.replace("await Promise.all([status(), history()]).catch(() => {});", "await Promise.all([status(),history(),loadManagedEvents()]).catch(()=>{});");

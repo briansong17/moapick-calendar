@@ -1,8 +1,10 @@
-const viewNames={members:'회원 일정',testing:'테스트 사용자',diagnostics:'진행상황',events:'내 일정',subscriptions:'구독',upload:'이미지 추가',history:'분석 기록',settings:'설정',review:'일정 검토'};
+const viewNames={members:'회원 일정',testing:'테스트 사용자',diagnostics:'연결 확인',events:'내 일정',subscriptions:'구독',upload:'이미지 추가',history:'분석 기록',settings:'설정',review:'일정 검토'};
 function openView(view,writeHash=true){
- if(view==='members'&&!signedIn?.memberSchedules)view='events';
+ if(!workspaceViewAllowed(view,signedIn))view='events';
+ if(!signedIn&&document.body.dataset.session==='guest')view='events';
  if(!viewNames[view])view='events';document.querySelectorAll('[data-page]').forEach(p=>p.hidden=p.dataset.page!==view);
- document.querySelectorAll('[data-view]').forEach(b=>{if(b.dataset.view===view)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});
+ const navigationView=['history','diagnostics','testing','members'].includes(view)?'settings':view==='review'?'events':view;
+ document.querySelectorAll('[data-view]').forEach(b=>{if(b.dataset.view===(b.closest('nav')?navigationView:view))b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});
  if(view==='testing'&&signedIn)queueMicrotask(()=>loadTestUser().catch(e=>document.getElementById('test-status').textContent=e.message));
  if(view==='diagnostics')queueMicrotask(autoRefreshDiagnostics);
  if(view==='members'&&!scheduleMembers.length)queueMicrotask(loadScheduleMembers);
